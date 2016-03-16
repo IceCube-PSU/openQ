@@ -43,7 +43,7 @@ class daemon(object):
         self.queue_stat['q'] = int(os.popen('qstat | grep "Q open" -c').read().rstrip('\n'))
         self.queue_stat['r'] = int(os.popen('qstat | grep "R open" -c').read().rstrip('\n'))
         # decide if queue is busy
-        if self.queue_stat['r'] < self.n_run or self.queue_stat['q'] < self.n_queue:
+        if self.queue_stat['r'] < self.n_run and self.queue_stat['q'] < self.n_queue:
             return False
         else:
             return True
@@ -73,7 +73,7 @@ class daemon(object):
 
     def serve_forever(self):
         while True:
-            my_daemon.submit() 
+            self.submit() 
             time.sleep(1)
 
 
