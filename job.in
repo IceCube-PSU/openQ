@@ -1,0 +1,18 @@
+#!/bin/bash
+#PBS -l nodes=1:ppn=1
+#PBS -l walltime=24:00:00
+#PBS -l mem=4gb
+#PBS -j oe
+#PBS -o /dev/null
+#PBS -N run_@@RUN@@
+
+cd $PBS_O_WORKDIR
+
+echo 'Hello' > @@OUTDIR@@/run_@@RUN@@.json
+sleep 100
+echo 'i slept 100 secs' > @@LOGDIR@@/run_@@RUN@@.log
+
+chgrp dfc13_collab @@OUTDIR@@/run_@@RUN@@.json
+chmod g+rw @@OUTDIR@@/run_@@RUN@@.json
+chgrp dfc13_collab @@LOGDIR@@/run_@@RUN@@.log
+chmod g+rw @@LOGDIR@@/run_@@RUN@@.log
