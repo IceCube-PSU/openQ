@@ -1,12 +1,14 @@
 #### How to set up:
 
-* first, amke sure that you are memeber of the group <code>dfc13_collab</code>
+* first, make sure that you are memeber of the group <code>dfc13_collab</code>
 * and that I added your username to the config
 
-You don't actually need to clone this repo, for enabling the queue sharing, simply excecute the following from your ACI home directory:
+You don't actually need to clone this repo, for enabling the queue sharing, simply do the following:
 
+* log in to aci-b:
 <code>ssh USERNAME@aci-b.aci.ics.psu.edu</code>
-
+* 
+from your ACI home directory:
 <code>/storage/home/pde3/openQ/start.sh</code>
 
 A directry structure in your home folder is set up under <code>~/PBS</code>, containing 4 sub-directories:
