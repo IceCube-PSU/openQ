@@ -73,8 +73,10 @@ class daemon(object):
         free = self.n_run - self.queue_stat['r']
         # try couple of times to find some work, then go back to sleep (outer loop)
         for i in range(free):
+            if len(jobs) == 0: break
             # choose a job from the list
-            usr, job = random.choice(jobs)
+            idx = random.randint(0,len(jobs)-1)
+            usr, job = jobs.pop(idx)
             self.qsub(usr,job)
 
     def qsub(self,usr,job):

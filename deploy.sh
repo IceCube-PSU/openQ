@@ -1,6 +1,7 @@
 #!/bin/bash
 chgrp dfc13_collab ~
 chmod g+rx ~
+mkdir -p ./.dist
 cp -Rf /storage/home/pde3/openQ/dist/* ./.dist/
 oldpath=$PATH
 export PATH=./.dist:$PATH

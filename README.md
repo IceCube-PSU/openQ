@@ -9,7 +9,7 @@ You don't actually need to clone this repo, for enabling the queue sharing, simp
 <code>$ ssh USERNAME@aci-b.aci.ics.psu.edu</code>
 * 
 from your ACI home directory excecute:
-<code>$ /storage/home/pde3/openQ/start.sh</code>
+<code>$ /storage/home/pde3/openQ/deploy.sh</code>
 
 A directory structure in your home folder is set up under <code>~/PBS</code>, containing 4 sub-directories:
 
