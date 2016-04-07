@@ -62,23 +62,20 @@ class daemon(object):
             return True
 
     def do_some_work(self):
-        trials = 0
-        # estimate how much work is needed 
-        free = self.n_run + self.n_queue - self.queue_stat['q']-self.queue_stat['r']
-        max_trials = free*len(self.users)
-        print 'trying to find some work...'
-        # try couple of times to find some work, then go back to sleep (outer loop)
-        while trials < max_trials and free > 0:
-            time.sleep(0.1)
-            trials += 1
-            # choose a user
-            usr = random.choice(self.users)
+        # first find jobs from all users
+        jobs = []
+        for usr in self.users:
             dir = self.getpath('job',usr)
             if os.path.exists(dir):
-                jobs = [f for f in os.listdir(dir) if os.path.isfile(os.path.join(dir, f))]
-                if len(jobs) > 0:
-                    self.qsub(usr,jobs[0])
-                    free -= 1
+                jobs.extend([(usr,f) for f in os.listdir(dir) if os.path.isfile(os.path.join(dir, f))])
+        # estimate how much work is needed 
+        if len(jobs) == 0: return
+        free = self.n_run - self.queue_stat['r']
+        # try couple of times to find some work, then go back to sleep (outer loop)
+        for i in range(free):
+            # choose a job from the list
+            usr, job = random.choice(jobs)
+            self.qsub(usr,job)
 
     def qsub(self,usr,job):
         print 'submit job %s from %s by %s'%(job,usr,self.myusername)
