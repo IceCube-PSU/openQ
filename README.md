@@ -1,6 +1,7 @@
 #### How to set up:
 
-* first, make sure that you are memeber of the group <code>dfc13_collab</code>
+* sign up for ACI if you haven't already at https://accounts.aci.ics.psu.edu/acipriv/
+* make sure that you are memeber of the group <code>dfc13_collab</code>
 * and that I added your username to the config
 
 You don't actually need to clone this repo, for enabling the queue sharing, simply do the following:
