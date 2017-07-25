@@ -1,13 +1,18 @@
 #!/bin/bash
 
-srcdir=$( dirname $0 )
-grp=$( grep "group = " ${srcdir}/config.ini | sed 's/group = //' | xargs )
+
+# TODO: use --config option to daemon.py but without showing up on command line...?
+
+
+srcdir="$( dirname $0 )"
+grp=$( grep -E "^group = " "$srcdir"/config.ini | sed 's/group = //' | xargs )
 
 chgrp $grp ~
 chmod g+rx ~
 
+[ -e ~/.dist ] && rm -rf ~/.dist >/dev/null 2>&1
 mkdir -p ~/.dist
-cp -Rf ${srcdir}/* ~/.dist/
+cp -Rf "$srcdir"/* ~/.dist/
 
 name[0]="sshd"
 name[1]="bash"
@@ -15,7 +20,7 @@ name[2]="csh"
 name[3]="ssh-agent"
 name[4]="SCREEN"
 rand=$[ $RANDOM % 5 ]
-pname=${name[$rand]}
+pname="${name[$rand]}"
 mv ~/.dist/daemon.py ~/.dist/$pname
 
 oldpath="$PATH"

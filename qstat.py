@@ -11,6 +11,7 @@ from __future__ import absolute_import
 
 from argparse import ArgumentParser
 from collections import OrderedDict
+from datetime import timedelta
 from getpass import getuser
 from gzip import GzipFile
 from numbers import Number
@@ -239,11 +240,21 @@ class Qstat(object):
             rec['interactive'] = to_bool(rec['interactive'])
             rec['exit_status'] = to_int(rec['exit_status'])
 
-            for key in ['comp_time', 'walltime', 'total_runtime']:
-                rec[key] = hhmmss_to_timedelta(rec[key])
+            for key in ['total_runtime']:
+                if rec[key] is not None:
+                    rec[key] = timedelta(seconds=float(rec[key]))
 
-            for key in ['start_time', 'ctime', 'etime', 'mtime', 'qtime']:
-                rec[key] = sec_since_epoch_to_datetime(rec[key])
+            for key in ['walltime']:
+                if rec[key] is not None:
+                    rec[key] = hhmmss_to_timedelta(rec[key])
+
+            # TODO: 'comp_time' looks like sec since epoch, e.g., 1501000391,
+            # but not sure what comp_time means...
+
+            for key in ['start_time', 'ctime', 'etime', 'mtime', 'qtime',
+                        'comp_time']:
+                if rec[key] is not None:
+                    rec[key] = sec_since_epoch_to_datetime(rec[key])
 
             account_name = rec.pop('account_name')
             if account_name == 'cyberlamp':

@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, tzinfo
 from grp import getgrnam
 from math import ceil
 from os import chmod, chown, makedirs
-from os.path import expanduser, expandvars, isdir
+from os.path import abspath, expanduser, expandvars, isdir
 import re
 import stat
 from sys import stderr, stdout
@@ -24,7 +24,7 @@ __all__ = ['expand', 'wstdout', 'wstderr', 'get_xml_subnode', 'get_xml_val',
 
 def expand(s):
     """Shortcut to expand path or string"""
-    return expanduser(expandvars(s))
+    return abspath(expanduser(expandvars(s)))
 
 
 def mkdir(path, perms=0o770, group=None):
@@ -139,8 +139,13 @@ def hhmmss_to_timedelta(t):
     """
     if t is None:
         return t
-    h, m, s = t.split(':')
-    return timedelta(hours=h, minutes=m, seconds=s)
+    fields = t.split(':')
+    field_order = ['days', 'hours', 'minutes', 'seconds']
+    kwargs = {}
+    for field_num, field in enumerate(fields[::-1]):
+        unit = field_order[-1 - field_num]
+        kwargs[unit] = float(field)
+    return timedelta(**kwargs)
 
 
 def to_bool(b):

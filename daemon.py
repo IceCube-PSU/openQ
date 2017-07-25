@@ -144,6 +144,7 @@ class Daemon(object):
         for usr in self.users:
             dirpath = self.getpath(dir_kind='job', usr=usr)
             if not isdir(dirpath):
+                wstdout('User "%s" does not have the job_dir setup.\n' % usr)
                 continue
             jobs.extend(
                 [(usr, f) for f in listdir(dirpath) if isfile(join(dirpath, f))]
@@ -151,6 +152,7 @@ class Daemon(object):
 
         # Estimate how much work is needed
         if not jobs:
+            wstderr('no jobs!\n')
             return
         free = self.n_run - self.queue_stat['r']
 
@@ -164,7 +166,7 @@ class Daemon(object):
             # choose a job from the list
             idx = randint(0, n_jobs - 1)
             usr, job = jobs.pop(idx)
-            if self.qsub(usr, job):
+            if self.qsub(usr=usr, job=job):
                 submitted += 1
 
     def qsub(self, usr, job):
@@ -184,11 +186,14 @@ class Daemon(object):
 
         """
         job_dir = self.getpath(dir_kind='job', usr=usr)
+        tmp_dir = self.getpath(dir_kind='tmp', usr=self.myusername)
         orig_job_filepath = join(job_dir, job)
-        tmp_job_filepath = join('/tmp', job)
+        tmp_job_filepath = join(tmp_dir, job)
         try:
             rename(orig_job_filepath, tmp_job_filepath)
         except OSError:
+            wstderr('Could not move "%s" to "%s"; moving on.\n'
+                    % (orig_job_filepath, tmp_job_filepath))
             return False
 
         submitted_dir = self.getpath(dir_kind='sub', usr=usr)
@@ -202,8 +207,8 @@ class Daemon(object):
 
         dest_filepath = submitted_filepath
         try:
-            wstdout('submitting job %s from %s by %s\n'
-                    % (job, usr, self.myusername))
+            wstdout('User %s submitting job %s created by %s\n'
+                    % (self.myusername, job, usr))
 
             # TODO: figure out "-M <email>" option and place here... but might
             # want to check that this option isn't already specified in the
@@ -249,7 +254,9 @@ class Daemon(object):
     def serve_forever(self):
         """Main loop"""
         while True:
-            if not self.full:
+            if self.full:
+                wstdout('Queue is full.')
+            else:
                 self.do_some_work()
             wstdout('going to sleep for %s seconds...\n' % self.sleep)
             sleep(self.sleep)
@@ -260,8 +267,7 @@ def parse_args(description=__doc__):
     """Parse and return command-line arguments"""
     parser = ArgumentParser(description=description)
     parser.add_argument(
-        'config', type=str, required=False,
-        default='/storage/home/pde3/openQ/config.ini',
+        '--config', type=str, default='/storage/home/pde3/openQ/config.ini',
         help='''Path to config file.'''
     )
     args = parser.parse_args()
