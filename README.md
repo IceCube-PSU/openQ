@@ -16,6 +16,7 @@ A directory structure in your home folder is set up under <code>~/PBS</code>, co
 * <code>output</code>: an output directory where your jobs can write output files into
 * <code>log</code>: an output directory where your jobs can write logging files into
 * <code>qsub_info</code>: an output directory where messages or failures from qsub commands are placed
+* <code>tmp</code>: Job files are temporarily moved here while the worker attempts to submit them to help ensure multiple workers don't try to submit the same jobs
 
 #### How to create your jobs:
 
