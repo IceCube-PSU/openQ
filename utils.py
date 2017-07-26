@@ -12,7 +12,6 @@ from os import chmod, chown, listdir, makedirs, remove
 from os.path import (abspath, expanduser, expandvars, isdir, isfile, islink,
                      ismount, join)
 import re
-import stat
 from shutil import copy2, copytree, rmtree
 from sys import stderr, stdout
 from time import timezone, altzone, daylight, tzname, mktime, localtime
@@ -59,13 +58,13 @@ def mkdir(path, perms=0o770, group=None):
     if not isdir(path):
         makedirs(path)
 
-    # Change group owner (note that -1 keeps user the same)
-    if group is not None:
-        chown(path, -1, gid)
-
     # Set permissions
     if perms is not None:
-        chmod(path, stat.S_IRWXG | stat.S_IRWXU)
+        chmod(path, perms)
+
+    # Change group owner (note that -1 keeps user the same)
+    if group is not None and stat(path).st_gid != gid:
+        chown(path, -1, gid)
 
 
 def copy_contents(srcdir, destdir):
