@@ -17,7 +17,6 @@ from os.path import dirname, getmtime, join, isdir, isfile, ismount
 from random import randint
 from shutil import copy2, copytree, rmtree
 import signal
-import stat
 from subprocess import CalledProcessError, check_output, STDOUT
 import sys
 from time import sleep
@@ -135,7 +134,8 @@ class Daemon(object):
         )
         self.mkdir(self.qstat_cache_dir)
         self.qstat = QstatBase(stale_sec=self.sleep - 1,
-                               cache_dir=self.qstat_cache_dir)
+                               cache_dir=self.qstat_cache_dir,
+                               group=self.group)
 
         if self.config.has_section('Commands'):
             commands = self.config.items('Commands')
@@ -274,7 +274,7 @@ class Daemon(object):
             Directory path to be created
 
         """
-        mkdir(path, group=self.group, perms=stat.S_IRWXG | stat.S_IRWXU)
+        mkdir(path, perms=0o770, group=self.group)
 
     def setup_dir(self, dir_kind):
         """Create dir of a particular kind"""
@@ -442,7 +442,7 @@ def parse_args(description=__doc__):
     """Parse and return command-line arguments"""
     parser = ArgumentParser(description=description)
     parser.add_argument(
-        '--config', type=str, default='~pde3/openQ/config.ini',
+        '--config', type=str, default='~jll1062/openQ/config.ini',
         help='''Path to config file.'''
     )
     args = parser.parse_args()

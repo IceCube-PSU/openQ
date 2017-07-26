@@ -1,7 +1,7 @@
 #!/bin/bash
 
 
-# TODO: use --config option to daemon.py but without showing up on command line...?
+# TODO: use --config option to daemon but without showing up on command line...?
 
 
 srcdir="$( dirname $0 )"

@@ -12,9 +12,10 @@ from __future__ import absolute_import
 from collections import OrderedDict
 from datetime import timedelta
 from getpass import getuser
+from grp import getgrgid, getgrnam
 from gzip import GzipFile
 from numbers import Number
-from os import makedirs
+from os import chmod, chown
 from os.path import getmtime, join, isdir, isfile
 import re
 from subprocess import check_output
@@ -22,7 +23,8 @@ from time import sleep, time
 from xml.etree import ElementTree
 
 from utils import (expand, get_xml_subnode, get_xml_val, hhmmss_to_timedelta,
-                   to_bool, to_int, sec_since_epoch_to_datetime, to_bytes_size)
+                   mkdir, to_bool, to_int, sec_since_epoch_to_datetime,
+                   to_bytes_size)
 
 
 __all__ = ['ARRAY_RE', 'CYBERLAMP_QUEUES', 'ACI_QUEUES', 'QstatBase']
@@ -57,8 +59,14 @@ class QstatBase(object):
         Directory in which to save cached qstat output. If `None`, no caching
         to disk will be performed.
 
+    group : None, string, or int
+        If None, do not set group or change default permissions on cached
+        files. If string or int, interpret as group name or GID, respectively.
+        In the latter case, change group ownership of the cached file(s)
+        accordingly and set group read/write permissions on the file.
+
     """
-    def __init__(self, stale_sec, cache_dir=None):
+    def __init__(self, stale_sec, cache_dir=None, group=None):
         assert isinstance(stale_sec, Number)
         self.stale_sec = stale_sec
         if isinstance(cache_dir, basestring):
@@ -67,6 +75,17 @@ class QstatBase(object):
             assert cache_dir is None
         self.cache_dir = cache_dir
         self.myusername = getuser()
+        self.gid = None
+        self.group = None
+        if self.cache_dir is not None:
+            if isinstance(group, int):
+                self.gid = group
+                self.group = getgrgid(self.gid).gr_name
+            elif isinstance(group, basestring):
+                self.group = group
+                self.gid = getgrnam(self.group).gr_gid
+            else:
+                assert group is None, str(group)
         self._xml = None
         self._xml_mtime = None
         self._jobs = None
@@ -91,7 +110,7 @@ class QstatBase(object):
         if self.cache_dir is not None:
             fpath = join(self.cache_dir, 'qstat.%s.xml.gz' % self.myusername)
             if not isdir(self.cache_dir):
-                makedirs(self.cache_dir)
+                mkdir(self.cache_dir, perms=0o770, group=self.gid)
 
         stale_before = time() - self.stale_sec
 
@@ -126,6 +145,10 @@ class QstatBase(object):
         if fpath is not None:
             with GzipFile(fpath, mode='w') as f:
                 f.write(self._xml)
+
+            if self.group is not None:
+                chown(fpath, -1, self.gid)
+                chmod(fpath, 0o660)
 
         return self._xml
 
@@ -268,8 +291,11 @@ class QstatBase(object):
                         fields = res_val.split(':')
                         rec['req_nodes'] = int(fields[0])
                         for field in fields[1:]:
-                            name, val = field.split('=')
-                            rec['req_' + name] = int(val)
+                            if '=' in field:
+                                name, val = field.split('=')
+                                rec['req_' + name] = int(val)
+                            else:
+                                rec['req_' + field] = True
                     elif res_name == 'qos':
                         rec['qos'] = res_val
                     rec['req_' + res_name] = res_val

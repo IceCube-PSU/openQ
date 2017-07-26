@@ -27,7 +27,7 @@ def expand(s):
     return abspath(expanduser(expandvars(s)))
 
 
-def mkdir(path, perms=0o770, group=None):
+def mkdir(path, perms=None, group=None):
     """Create a directory and set ownership and permissions appropriately.
 
     Parameters
