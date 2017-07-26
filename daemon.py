@@ -30,7 +30,6 @@ __all__ = ['APPLICATION_PATH', 'APPLICATION_DIR', 'APPLICATION_MTIME',
            'Daemon', 'parse_args', 'main']
 
 
-# TODO: make this work with pyinstaller!
 if getattr(sys, 'frozen', False):
     APPLICATION_PATH = expand(sys.executable)
     FROZEN = True
@@ -40,10 +39,6 @@ elif __file__:
 
 APPLICATION_DIR = dirname(expand(APPLICATION_PATH))
 APPLICATION_MTIME = getmtime(APPLICATION_PATH)
-#print 'APPLICATION_PATH:', APPLICATION_PATH
-#print 'APPLICATION_DIR:', APPLICATION_DIR
-#print 'APPLICATION_MTIME:', APPLICATION_MTIME
-#print 'FROZEN: ', FROZEN
 
 
 class Daemon(object):
@@ -114,11 +109,6 @@ class Daemon(object):
 
         self.config_time = config_time
 
-    # TODO: get this to work! Possible that shouldn't attempt to remove entire
-    #       dir, since it's working dir of the running app; just replace the
-    #       file(s) within the dir instead.
-    # TODO: make sure the `dist` dir and appropriate files exist before any
-    #       upgrade attempt is allowd
     # TODO: do the upgrade ourselves here, don't call the shell script!
     def upgrade(self):
         """Upgrade the software, if called to do so."""
@@ -408,7 +398,7 @@ def parse_args(description=__doc__):
     """Parse and return command-line arguments"""
     parser = ArgumentParser(description=description)
     parser.add_argument(
-        '--config', type=str, default='/storage/home/pde3/openQ/config.ini',
+        '--config', type=str, default='~pde3/openQ/config.ini',
         help='''Path to config file.'''
     )
     args = parser.parse_args()

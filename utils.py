@@ -8,11 +8,10 @@ from __future__ import absolute_import
 from datetime import datetime, timedelta, tzinfo
 from grp import getgrnam
 from math import ceil
-from os import chmod, chown, listdir, makedirs, remove
-from os.path import (abspath, expanduser, expandvars, isdir, isfile, islink,
-                     ismount, join)
+from os import chmod, chown, listdir, makedirs, remove, rmdir
+from os.path import abspath, expanduser, expandvars, isdir, join
 import re
-from shutil import copy2, copytree, rmtree
+from shutil import copy2, copytree
 from sys import stderr, stdout
 from time import timezone, altzone, daylight, tzname, mktime, localtime
 
