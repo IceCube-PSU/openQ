@@ -13,7 +13,7 @@ from ConfigParser import ConfigParser
 from datetime import datetime
 from getpass import getuser
 from os import listdir, remove, rename
-from os.path import dirname, getmtime, join, isdir, isfile
+from os.path import dirname, getmtime, join, isdir, isfile, ismount
 from random import randint
 from shutil import copy2, copytree, rmtree
 import stat
@@ -22,7 +22,8 @@ import sys
 from time import sleep
 
 from qstat_base import QstatBase
-from utils import expand, mkdir, TZ_LOCAL, wstderr, wstdout
+from utils import (copy_contents, expand, mkdir, remove_contents, TZ_LOCAL,
+                   wstderr, wstdout)
 
 
 __all__ = ['APPLICATION_PATH', 'APPLICATION_DIR', 'APPLICATION_MTIME',
@@ -107,51 +108,79 @@ class Daemon(object):
                     else:
                         self.upgrade_kind = None
                 elif command[0] == 'shutdown':
-                    if command[1].lower()  == 'true':
+                    if command[1].lower() == 'true':
                         wstdout('Shutdown command issued.\n')
                         sys.exit(0)
 
-        if self.upgrade_kind is not None:
-            self.upgrade(kind=self.upgrade_kind)
-
         self.config_time = config_time
 
-    def upgrade(self, kind):
-        """Upgrade the software.
-
-        Parameters
-        ----------
-        kind : string
-            Either 'auto' or 'force'
-
-        """
-        if kind is None:
+    # TODO: get this to work! Possible that shouldn't attempt to remove entire
+    #       dir, since it's working dir of the running app; just replace the
+    #       file(s) within the dir instead.
+    # TODO: make sure the `dist` dir and appropriate files exist before any
+    #       upgrade attempt is allowd
+    # TODO: do the upgrade ourselves here, don't call the shell script!
+    def upgrade(self):
+        """Upgrade the software, if called to do so."""
+        if not self.upgrade_kind:
             return
 
-        assert kind in ['auto', 'force'], str(kind)
+        if self.upgrade_kind not in ['auto', 'force']:
+            wstderr('Invalid `upgrade_kind`: %s\n' % self.upgrade_kind)
+            wstderr('Continuing to operate without attempting to upgrade.\n')
+            return
 
         if not FROZEN:
             wstdout('Refusing to attempt to upgrade non-frozen application'
                     ' (i.e., this is a source-code distribution).\n')
             return
 
-        if kind == 'auto':
-            dist_mtime = getmtime(self.distfile)
+        if not isfile(self.distfile):
+            wstdout('Could not find distfile at path "%s"; not upgrading'
+                    ' and resuming normal operation.\n' % self.distfile)
+            return
+
+        if self.upgrade_kind == 'auto':
+            try:
+                dist_mtime = getmtime(self.distfile)
+            except OSError:
+                wstdout('Could not find distfile at path "%s"; not upgrading'
+                        ' and resuming normal operation.\n' % self.distfile)
+                return
             if dist_mtime <= APPLICATION_MTIME:
+                wstdout('Distribution `daemon` "%s" not newer than current'
+                        ' running `daemon`; not upgrading.\n' % self.distfile)
                 return
             wstdout('Found newer version of the software!\n')
 
-        wstdout('Updating the software...\n')
+        if APPLICATION_DIR == expand(dirname(self.distfile)):
+            wstdout('Application is running out of the dist dir: "%s"; cannot'
+                    ' upgrade, resuming normal operation!\n' % APPLICATION_DIR)
+            return
+
+        wstdout('Attempting to upgrade the software...\n')
 
         wstdout('1. Backing up current version of software...\n')
 
         backupdir = APPLICATION_DIR + '.bak'
-        if isdir(backupdir):
+        pid_file = expand('~/.pid')
+        backup_pid_file = expand('~/.pid.bak')
+
+        if ismount(backupdir):
+            wstderr('Backup dir "%s" is a mount point; refusing to modify.\n'
+                    % backupdir)
+            wstderr('Cointinuing operation without upgrading!\n')
+        elif isdir(backupdir):
             wstdout('Backup dir "%s" already exists; removing.\n' % backupdir)
             rmtree(backupdir)
+        elif isfile(backupdir):
+            wstdout('Backup dir path "%s" is an existing file; removing.\n'
+                    % backupdir)
+            remove(backupdir)
 
+        # Perform the actual backup of the current files
         copytree(APPLICATION_DIR, backupdir)
-        copy2(expand('~/.pid'), expand('~/.pid.bak'))
+        copy2(pid_file, backup_pid_file)
 
         wstdout('2. Running `deploy.sh` to get and launch new version...\n')
         try:
@@ -159,11 +188,19 @@ class Daemon(object):
         except CalledProcessError:
             wstdout('> Failed to deploy new software. Reverting code and'
                     ' continuing to run.\n')
-            rmtree(APPLICATION_DIR)
-            copytree(backupdir, APPLICATION_DIR)
-            copy2(expand('~/.pid.bak'), expand('~/.pid'))
+
+            # TODO/NOTE: the following fails due to e.g.:
+            # OSError: [Errno 16] Device or resource busy: '~/.dist/.nfs0000000000e2e11900000ea1'
+            # but we want to keep going in this case, so for now ignoring OSError
+            try:
+                remove_contents(APPLICATION_DIR)
+            except OSError:
+                pass
+
+            copy_contents(backupdir, APPLICATION_DIR)
+            copy2(backup_pid_file, pid_file)
             rmtree(backupdir)
-            remove(expand('~/.pid.bak'))
+            remove(backup_pid_file)
         else:
             wstdout('> Upgrade appears to have succeeded; output of'
                     ' deploy.sh:\n%s\n' % out)
@@ -355,13 +392,16 @@ class Daemon(object):
     def serve_forever(self):
         """Main loop"""
         while True:
+            self.reconf()
+            self.upgrade()
+
             if self.full:
                 wstdout('Queue is full.')
             else:
                 self.do_some_work()
+
             wstdout('going to sleep for %s seconds...\n' % self.sleep)
             sleep(self.sleep)
-            self.reconf()
 
 
 def parse_args(description=__doc__):

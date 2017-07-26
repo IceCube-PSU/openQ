@@ -8,10 +8,12 @@ from __future__ import absolute_import
 from datetime import datetime, timedelta, tzinfo
 from grp import getgrnam
 from math import ceil
-from os import chmod, chown, makedirs
-from os.path import abspath, expanduser, expandvars, isdir
+from os import chmod, chown, listdir, makedirs, remove
+from os.path import (abspath, expanduser, expandvars, isdir, isfile, islink,
+                     ismount, join)
 import re
 import stat
+from shutil import copy2, copytree, rmtree
 from sys import stderr, stdout
 from time import timezone, altzone, daylight, tzname, mktime, localtime
 
@@ -64,6 +66,42 @@ def mkdir(path, perms=0o770, group=None):
     # Set permissions
     if perms is not None:
         chmod(path, stat.S_IRWXG | stat.S_IRWXU)
+
+
+def copy_contents(srcdir, destdir):
+    """Copy the contents of `srcdir` into `destdir`."""
+    assert isdir(srcdir)
+    assert isdir(destdir)
+    for name in listdir(srcdir):
+        source_path = join(srcdir, name)
+        if ismount(source_path):
+            copy2(source_path, destdir)
+        elif islink(source_path):
+            copy2(source_path, destdir)
+        elif isfile(source_path):
+            copy2(source_path, destdir)
+        elif isdir(source_path):
+            dest_path = join(destdir, name)
+            copytree(source_path, dest_path)
+        else:
+            raise ValueError('Path "%s" is not of a known kind.' % source_path)
+
+
+def remove_contents(target):
+    """Remove the contents of `target` directory."""
+    assert isdir(target)
+    for name in listdir(target):
+        source_path = join(target, name)
+        if ismount(source_path):
+            remove(source_path)
+        elif islink(source_path):
+            remove(source_path)
+        elif isfile(source_path):
+            remove(source_path)
+        elif isdir(source_path):
+            rmtree(source_path)
+        else:
+            raise ValueError('Path "%s" is not of a known kind.' % source_path)
 
 
 def wstdout(msg):

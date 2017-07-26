@@ -10,7 +10,10 @@ grp=$( grep -E "^group = " "$srcdir"/config.ini | sed 's/group = //' | xargs )
 chgrp $grp ~
 chmod g+rx ~
 
-[ -e ~/.dist ] && rm -rf ~/.dist >/dev/null 2>&1
+[ -f ~/.dist ] && rm -f ~/.dist >/dev/null 2>&1
+# NOTE: do NOT remove the whole dir if it exists (as a dir), as this could mess
+# up a currently-running deaemon during an upgrade.
+[ -d ~/.dist ] && find ~/.dist -mindepth 1 -maxdepth 1 -print0 | xargs -0 rm -rf >/dev/null 2>&1
 mkdir -p ~/.dist
 cp -Rf "$srcdir"/dist/* ~/.dist/
 
