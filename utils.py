@@ -69,39 +69,42 @@ def mkdir(path, perms=0o770, group=None):
 
 
 def copy_contents(srcdir, destdir):
-    """Copy the contents of `srcdir` into `destdir`."""
+    """Copy the contents of `srcdir` into `destdir`. Ignore errors due to .nfs*
+    files refusing to be modified."""
     assert isdir(srcdir)
     assert isdir(destdir)
     for name in listdir(srcdir):
         source_path = join(srcdir, name)
-        if ismount(source_path):
-            copy2(source_path, destdir)
-        elif islink(source_path):
-            copy2(source_path, destdir)
-        elif isfile(source_path):
-            copy2(source_path, destdir)
-        elif isdir(source_path):
+        if not isdir(source_path):
+            try:
+                copy2(source_path, destdir)
+            except IOError, err:
+                if err[0] != 26: # and '.nfs' in err[1]):
+                    raise
+        else:
             dest_path = join(destdir, name)
             copytree(source_path, dest_path)
-        else:
-            raise ValueError('Path "%s" is not of a known kind.' % source_path)
 
 
 def remove_contents(target):
-    """Remove the contents of `target` directory."""
+    """Remove the contents of `target` directory. Ignore errors due to .nfs*
+    files refusing to be removed."""
     assert isdir(target)
     for name in listdir(target):
         source_path = join(target, name)
-        if ismount(source_path):
-            remove(source_path)
-        elif islink(source_path):
-            remove(source_path)
-        elif isfile(source_path):
-            remove(source_path)
+        if not isdir(source_path):
+            try:
+                remove(source_path)
+            except IOError, err:
+                if not (err[0] == 26 and '.nfs' in err[1]):
+                    raise
         elif isdir(source_path):
-            rmtree(source_path)
-        else:
-            raise ValueError('Path "%s" is not of a known kind.' % source_path)
+            remove_contents(source_path)
+            try:
+                rmdir(source_path)
+            except OSError, err:
+                if err[0] != 39: # dir not empty is only OK
+                    raise
 
 
 def wstdout(msg):
