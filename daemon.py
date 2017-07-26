@@ -9,21 +9,33 @@ Submit job files located in a directory to ACI open queue.
 from __future__ import absolute_import
 
 from argparse import ArgumentParser
-import ConfigParser
+from ConfigParser import ConfigParser
 from datetime import datetime
 from getpass import getuser
-from os import listdir, rename
-from os.path import getmtime, join, isdir, isfile
+from os import listdir, remove, rename
+from os.path import dirname, getmtime, join, isdir, isfile
 from random import randint
+from shutil import copy2, copytree, rmtree
 import stat
 from subprocess import CalledProcessError, check_output, STDOUT
+import sys
 from time import sleep
 
-from qstat import Qstat
+from qstat_base import QstatBase
 from utils import expand, mkdir, TZ_LOCAL, wstderr, wstdout
 
 
-__all__ = ['Daemon', 'parse_args', 'main']
+__all__ = ['APPLICATION_PATH', 'APPLICATION_DIR', 'APPLICATION_MTIME',
+           'Daemon', 'parse_args', 'main']
+
+
+# TODO: make this work with pyinstaller!
+if getattr(sys, 'frozen', False):
+    APPLICATION_PATH = expand(sys.executable)
+elif __file__:
+    APPLICATION_PATH = expand(dirname(__file__))
+APPLICATION_DIR = dirname(expand(__file__))
+APPLICATION_MTIME = getmtime(APPLICATION_PATH)
 
 
 class Daemon(object):
@@ -37,10 +49,13 @@ class Daemon(object):
     """
     def __init__(self, configfile):
         self.myusername = getuser()
-        self.config = ConfigParser.ConfigParser()
+        self.config = ConfigParser()
         self.configfile = expand(configfile)
+        self.configdir = dirname(self.configfile)
+        self.distfile = join(self.configdir, 'dist', 'daemon')
         self.config_time = 0
         self.qstat = None
+        self.upgrade_kind = False
         self.reconf()
         self.queue_stat = {'q': 0, 'r': 0, 'other': 0}
 
@@ -48,28 +63,102 @@ class Daemon(object):
         """If configfile has been updated, reconfigure accordingly"""
         # first check if that file was touched
         config_time = getmtime(self.configfile)
-        if config_time > self.config_time:
-            wstdout('reconf\n')
-            self.config.read(self.configfile)
-            self.users = self.config.get('Users', 'list').split(',')
-            if self.myusername not in self.users:
-                raise ValueError(
-                    'User running script "%s" is not in users list %s'
-                    % self.myusername, self.users
-                )
-            self.group = self.config.get('Users', 'group')
-            for key, _ in self.config.items('Directories'):
-                self.setup_dir(key)
-            self.n_run = int(self.config.get('Queue', 'n_run'))
-            self.n_queue = int(self.config.get('Queue', 'n_queue'))
-            self.sleep = int(self.config.get('Queue', 'sleep'))
-            self.qstat_cache_dir = expand(
-                self.config.get('Logging', 'qstat_cache_dir')
+        if config_time <= self.config_time:
+            return
+
+        wstdout('Updated/new config detected; reconfiguring...\n')
+        self.config.read(self.configfile)
+
+        self.users = self.config.get('Users', 'list').split(',')
+        if self.myusername not in self.users:
+            raise ValueError(
+                'User running script "%s" is not in users list %s'
+                % self.myusername, self.users
             )
-            self.mkdir(self.qstat_cache_dir)
-            self.qstat = Qstat(stale_sec=self.sleep - 1,
+
+        self.group = self.config.get('Users', 'group')
+        for key, _ in self.config.items('Directories'):
+            self.setup_dir(key)
+        self.n_run = int(self.config.get('Queue', 'n_run'))
+        self.n_queue = int(self.config.get('Queue', 'n_queue'))
+        self.sleep = int(self.config.get('Queue', 'sleep'))
+        self.qstat_cache_dir = expand(
+            self.config.get('Logging', 'qstat_cache_dir')
+        )
+        self.mkdir(self.qstat_cache_dir)
+        self.qstat = QstatBase(stale_sec=self.sleep - 1,
                                cache_dir=self.qstat_cache_dir)
-            self.config_time = config_time
+
+        if self.config.has_section('Commands'):
+            commands = self.config.items('Commands')
+            for command in commands:
+                wstdout('%s = "%s"\n' % command) # DEBUG
+                if command[0] == 'upgrade':
+                    arg = command[1].lower()
+                    if arg in ['auto', 'force']:
+                        self.upgrade_kind = arg
+                    else:
+                        self.upgrade_kind = None
+                elif command[0] == 'shutdown':
+                    if command[1].lower()  == 'true':
+                        wstdout('Shutdown command issued.\n')
+                        sys.exit(0)
+
+        if self.upgrade_kind is not None:
+            self.upgrade(kind=self.upgrade_kind)
+
+        self.config_time = config_time
+
+    def upgrade(self, kind):
+        """Upgrade the software.
+
+        Parameters
+        ----------
+        kind : string
+            Either 'auto' or 'force'
+
+        """
+        if kind is None:
+            return
+
+        assert kind in ['auto', 'force'], str(kind)
+
+        if kind == 'auto':
+            dist_mtime = getmtime(self.distfile)
+            if dist_mtime <= APPLICATION_MTIME:
+                return
+            wstdout('Found newer version of the software!\n')
+
+        wstdout('Updating the software...\n')
+
+        wstdout('1. Backing up current version of software...\n')
+
+        backupdir = APPLICATION_DIR + '.bak'
+        if isdir(backupdir):
+            wstdout('Backup dir "%s" already exists; removing.\n' % backupdir)
+            rmtree(backupdir)
+
+        copytree(APPLICATION_DIR, backupdir)
+        copy2(expand('~/.pid'), expand('~/.pid.bak'))
+
+        wstdout('2. Running `deploy.sh` to get and launch new version...\n')
+        try:
+            out = check_output(join(self.configdir, 'deploy.sh'))
+        except CalledProcessError:
+            wstdout('> Failed to deploy new software. Reverting code and'
+                    ' continuing to run.\n')
+            rmtree(APPLICATION_DIR)
+            copytree(backupdir, APPLICATION_DIR)
+            copy2(expand('~/.pid.bak'), expand('~/.pid'))
+            rmtree(backupdir)
+            remove(expand('~/.pid.bak'))
+        else:
+            wstdout('> Upgrade appears to have succeeded; output of'
+                    ' deploy.sh:\n%s\n' % out)
+            wstdout('> Cleaning up and shutting down obsolete daemon...\n')
+            rmtree(backupdir)
+            remove(expand('~/.pid.bak'))
+            sys.exit(0)
 
     def getpath(self, dir_kind, usr):
         """Get the path to a particular kind of directory specified in the
@@ -144,10 +233,10 @@ class Daemon(object):
         for usr in self.users:
             dirpath = self.getpath(dir_kind='job', usr=usr)
             if not isdir(dirpath):
-                wstdout('User "%s" does not have the job_dir setup.\n' % usr)
+                wstdout('User "%s" does not have a job_dir setup.\n' % usr)
                 continue
             jobs.extend(
-                [(usr, f) for f in listdir(dirpath) if isfile(join(dirpath, f))]
+                (usr, f) for f in listdir(dirpath) if isfile(join(dirpath, f))
             )
 
         # Estimate how much work is needed
