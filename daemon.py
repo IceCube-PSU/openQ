@@ -16,6 +16,7 @@ from os import listdir, remove, rename
 from os.path import dirname, getmtime, join, isdir, isfile, ismount
 from random import randint
 from shutil import copy2, copytree, rmtree
+import signal
 import stat
 from subprocess import CalledProcessError, check_output, STDOUT
 import sys
@@ -27,7 +28,7 @@ from utils import (copy_contents, expand, mkdir, remove_contents, TZ_LOCAL,
 
 
 __all__ = ['APPLICATION_PATH', 'APPLICATION_DIR', 'APPLICATION_MTIME',
-           'Daemon', 'parse_args', 'main']
+           'SIGNAL_MAP', 'RESPAWN_DELAY_SEC', 'Daemon', 'parse_args', 'main']
 
 
 if getattr(sys, 'frozen', False):
@@ -39,6 +40,32 @@ elif __file__:
 
 APPLICATION_DIR = dirname(expand(APPLICATION_PATH))
 APPLICATION_MTIME = getmtime(APPLICATION_PATH)
+
+SIGNAL_MAP = {
+    k: v for v, k in reversed(sorted(signal.__dict__.items()))
+    if v.startswith('SIG') and not v.startswith('SIG_')
+}
+"""Mapping from signal numbers to their names"""
+
+RESPAWN_DELAY_SEC = 10
+
+
+# TODO: get signal handling / respawning working.
+#def sighandler(signum, frame):
+#    signame = SIGNAL_MAP[signum]
+#    wstdout('Received signum %d (%s); relaunching daemon.\n'
+#            % (signum, signame))
+#    out = check_output(join(self.configdir, 'deploy.sh'))
+#
+#
+#for sigkey in dir(signal):
+#    if not sigkey.startswith('SIG'):
+#        continue
+#    try:
+#        _signum = getattr(signal, sigkey)
+#        signal.signal(_signum, sighandler)
+#    except (OSError, RuntimeError) as m: # OSError->Py3, RuntimeError->Py2
+#        print ("Skipping {}".format(i))
 
 
 class Daemon(object):
@@ -59,18 +86,36 @@ class Daemon(object):
         self.config_time = 0
         self.qstat = None
         self.upgrade_kind = False
+        self.configured = False
         self.reconf()
         self.queue_stat = {'q': 0, 'r': 0, 'other': 0}
 
     def reconf(self):
         """If configfile has been updated, reconfigure accordingly"""
-        # first check if that file was touched
-        config_time = getmtime(self.configfile)
+        # First check if that file was touched
+        try:
+            config_time = getmtime(self.configfile)
+        except OSError, err:
+            if self.configured and err[0] == 2:
+                wstderr('Could not find config "%s", returning to normal'
+                        ' operation\n' % self.configfile)
+                return
+            raise
+
         if config_time <= self.config_time:
             return
 
         wstdout('Updated/new config detected; reconfiguring...\n')
-        self.config.read(self.configfile)
+        self.config = ConfigParser()
+        files_read = self.config.read(self.configfile)
+        if not files_read:
+            wstdout('Config file "%s" could not be read... ' % self.configfile)
+            if self.configured:
+                wstdout('Returning to normal operation using previously-read'
+                        ' config.\n')
+            else:
+                wstdout('No configuration exists; exiting.\n')
+                sys.exit(1)
 
         self.users = self.config.get('Users', 'list').split(',')
         if self.myusername not in self.users:
@@ -94,8 +139,9 @@ class Daemon(object):
 
         if self.config.has_section('Commands'):
             commands = self.config.items('Commands')
+            wstdout('Found [Commands] section, with following commands:\n')
             for command in commands:
-                wstdout('%s = "%s"\n' % command) # DEBUG
+                wstdout('> %s = "%s"\n' % command) # DEBUG
                 if command[0] == 'upgrade':
                     arg = command[1].lower()
                     if arg in ['auto', 'force']:
@@ -108,6 +154,7 @@ class Daemon(object):
                         sys.exit(0)
 
         self.config_time = config_time
+        self.configured = True
 
     # TODO: do the upgrade ourselves here, don't call the shell script!
     def upgrade(self):
@@ -182,10 +229,7 @@ class Daemon(object):
             # TODO/NOTE: the following fails due to e.g.:
             # OSError: [Errno 16] Device or resource busy: '~/.dist/.nfs0000000000e2e11900000ea1'
             # but we want to keep going in this case, so for now ignoring OSError
-            try:
-                remove_contents(APPLICATION_DIR)
-            except OSError:
-                pass
+            remove_contents(APPLICATION_DIR)
 
             copy_contents(backupdir, APPLICATION_DIR)
             copy2(backup_pid_file, pid_file)

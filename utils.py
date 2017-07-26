@@ -69,15 +69,21 @@ def mkdir(path, perms=0o770, group=None):
 def copy_contents(srcdir, destdir):
     """Copy the contents of `srcdir` into `destdir`. Ignore errors due to .nfs*
     files refusing to be modified."""
-    assert isdir(srcdir)
-    assert isdir(destdir)
+    if not isdir(srcdir):
+        raise ValueError('`copy_contents` requires `srcdir` "%s" be a'
+                         ' directory, but it is not..' % srcdir)
+    if not isdir(destdir):
+        raise ValueError('`copy_contents` requires `destdir` "%s" be a'
+                         ' directory, but it is not..' % destdir)
     for name in listdir(srcdir):
         source_path = join(srcdir, name)
         if not isdir(source_path):
             try:
                 copy2(source_path, destdir)
-            except IOError, err:
-                if err[0] != 26: # and '.nfs' in err[1]):
+            except (IOError, OSError) as err:
+                if '.nfs' in str(err):
+                    wstdout('Ignoring error: %s\n' % err)
+                else:
                     raise
         else:
             dest_path = join(destdir, name)
@@ -87,22 +93,33 @@ def copy_contents(srcdir, destdir):
 def remove_contents(target):
     """Remove the contents of `target` directory. Ignore errors due to .nfs*
     files refusing to be removed."""
-    assert isdir(target)
+    if not isdir(target):
+        raise ValueError('`target` "%s" must be a directory.' % target)
+
     for name in listdir(target):
         source_path = join(target, name)
-        if not isdir(source_path):
-            try:
+        try:
+            isdir(source_path)
+        except OSError:
+            continue
+
+        try:
+            if not isdir(source_path):
                 remove(source_path)
-            except IOError, err:
-                if not (err[0] == 26 and '.nfs' in err[1]):
-                    raise
-        elif isdir(source_path):
-            remove_contents(source_path)
-            try:
-                rmdir(source_path)
-            except OSError, err:
-                if err[0] != 39: # dir not empty is only OK
-                    raise
+        except (IOError, OSError) as err:
+            if '.nfs' in str(err):
+                wstdout('Ignoring error: %s\n' % err)
+                continue
+            raise
+        else:
+            continue
+
+        remove_contents(source_path)
+        try:
+            rmdir(source_path)
+        except OSError, err:
+            if err[0] != 39: # ignore dir not empty
+                raise
 
 
 def wstdout(msg):

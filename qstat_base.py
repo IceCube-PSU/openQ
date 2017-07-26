@@ -18,7 +18,7 @@ from os import makedirs
 from os.path import getmtime, join, isdir, isfile
 import re
 from subprocess import check_output
-from time import time
+from time import sleep, time
 from xml.etree import ElementTree
 
 from utils import (expand, get_xml_subnode, get_xml_val, hhmmss_to_timedelta,
@@ -38,6 +38,8 @@ CYBERLAMP_QUEUES = [
 ACI_QUEUES = [
     'dfc13_a_g_sc_default', 'dfc13_a_t_bc_default', 'open'
 ]
+
+MAX_ATTEMPTS = 15
 
 
 class QstatBase(object):
@@ -131,7 +133,19 @@ class QstatBase(object):
     def jobs(self):
         """list of OrderedDict : records of each job qstat reports"""
         if self._jobs is None:
-            self._jobs = self.parse_xml(self.xml)
+            attempts = 0
+            while True:
+                attempts += 1
+                try:
+                    self._jobs = self.parse_xml(self.xml)
+                except IOError:
+                    # Invalidate the XML, since the parse failed
+                    self._xml = None
+                    if attempts >= MAX_ATTEMPTS:
+                        raise
+                    sleep(5)
+                else:
+                    break
             self._jobs_df = None
         return self._jobs
 
