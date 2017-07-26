@@ -442,7 +442,7 @@ def parse_args(description=__doc__):
     """Parse and return command-line arguments"""
     parser = ArgumentParser(description=description)
     parser.add_argument(
-        '--config', type=str, default='~jll1062/openQ/config.ini',
+        '--config', type=str, default='~pde3/openQ/config.ini',
         help='''Path to config file.'''
     )
     args = parser.parse_args()
