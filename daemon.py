@@ -34,10 +34,15 @@ if getattr(sys, 'frozen', False):
     APPLICATION_PATH = expand(sys.executable)
     FROZEN = True
 elif __file__:
-    APPLICATION_PATH = expand(dirname(__file__))
+    APPLICATION_PATH = expand(__file__)
     FROZEN = False
-APPLICATION_DIR = dirname(expand(__file__))
+
+APPLICATION_DIR = dirname(expand(APPLICATION_PATH))
 APPLICATION_MTIME = getmtime(APPLICATION_PATH)
+#print 'APPLICATION_PATH:', APPLICATION_PATH
+#print 'APPLICATION_DIR:', APPLICATION_DIR
+#print 'APPLICATION_MTIME:', APPLICATION_MTIME
+#print 'FROZEN: ', FROZEN
 
 
 class Daemon(object):
