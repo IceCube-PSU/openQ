@@ -46,9 +46,9 @@ printf "\n"
 
 if kill -0 $PID >/dev/null 2>&1
 then
-	echo "SUCCESS: openQ daemon has been deployed successfully. Proc name=\"$pname\", PID=$PID" 1>&2
+	echo "SUCCESS: openQ daemon has been deployed successfully. Proc name: \"$pname\", PID: $PID"
 	exit 0
 else
-	echo "FAILURE: openQ daemon did not start or died. Please report any error messages emitted above." 1>&2
+	echo "FAILURE: openQ daemon did not start or died. Please report any error messages emitted above."
 	exit 1
 fi
