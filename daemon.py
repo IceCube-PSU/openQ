@@ -32,8 +32,10 @@ __all__ = ['APPLICATION_PATH', 'APPLICATION_DIR', 'APPLICATION_MTIME',
 # TODO: make this work with pyinstaller!
 if getattr(sys, 'frozen', False):
     APPLICATION_PATH = expand(sys.executable)
+    FROZEN = True
 elif __file__:
     APPLICATION_PATH = expand(dirname(__file__))
+    FROZEN = False
 APPLICATION_DIR = dirname(expand(__file__))
 APPLICATION_MTIME = getmtime(APPLICATION_PATH)
 
@@ -122,6 +124,11 @@ class Daemon(object):
             return
 
         assert kind in ['auto', 'force'], str(kind)
+
+        if not FROZEN:
+            wstdout('Refusing to attempt to upgrade non-frozen application'
+                    ' (i.e., this is a source-code distribution).\n')
+            return
 
         if kind == 'auto':
             dist_mtime = getmtime(self.distfile)
