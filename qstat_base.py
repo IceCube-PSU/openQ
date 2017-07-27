@@ -129,8 +129,8 @@ class QstatBase(object):
             xml_mtime = getmtime(fpath)
             if xml_mtime > stale_before:
                 try:
-                    with GzipFile(fpath, mode='r') as f:
-                        self._xml = f.read()
+                    with GzipFile(fpath, mode='r') as fobj:
+                        self._xml = fobj.read()
                 except Exception:
                     pass
                 else:
@@ -143,8 +143,8 @@ class QstatBase(object):
 
         # Update the cache file
         if fpath is not None:
-            with GzipFile(fpath, mode='w') as f:
-                f.write(self._xml)
+            with GzipFile(fpath, mode='w') as fobj:
+                fobj.write(self._xml)
 
             if self.group is not None:
                 chown(fpath, -1, self.gid)
@@ -155,12 +155,15 @@ class QstatBase(object):
     @property
     def jobs(self):
         """list of OrderedDict : records of each job qstat reports"""
+        # Note that this call will reload the XML if needed, and invalidates
+        # _jobs when the XML is relaoded.
+        xml = self.xml
         if self._jobs is None:
             attempts = 0
             while True:
                 attempts += 1
                 try:
-                    self._jobs = self.parse_xml(self.xml)
+                    self._jobs = self.parse_xml(xml)
                 except IOError:
                     # Invalidate the XML, since the parse failed
                     self._xml = None
