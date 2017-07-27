@@ -23,7 +23,8 @@ from time import sleep
 
 from qstat_base import QstatBase
 from utils import (copy_contents, expand, mkdir, remove_contents,
-                   set_path_metadata, TZ_LOCAL, wstderr, wstdout)
+                   rename_or_move, set_path_metadata, TZ_LOCAL, wstderr,
+                   wstdout)
 
 
 __all__ = ['APPLICATION_PATH', 'APPLICATION_DIR', 'APPLICATION_MTIME',
@@ -360,12 +361,12 @@ class Daemon(object):
 
         """
         job_dir = self.getpath(dir_kind='job', usr=usr)
-        tmp_dir = self.getpath(dir_kind='tmp', usr=self.myusername)
+        tmp_dir = self.getpath(dir_kind='tmp', usr=usr)
         orig_job_filepath = join(job_dir, job)
         tmp_job_filepath = join(tmp_dir, job)
         try:
-            move(orig_job_filepath, tmp_job_filepath)
-        except OSError:
+            rename_or_move(orig_job_filepath, tmp_job_filepath)
+        except (IOError, OSError):
             wstderr('Could not move "%s" to "%s"; moving on.\n'
                     % (orig_job_filepath, tmp_job_filepath))
             return False
@@ -424,8 +425,8 @@ class Daemon(object):
 
         finally:
             try:
-                move(tmp_job_filepath, dest_filepath)
-            except OSError:
+                rename_or_move(tmp_job_filepath, dest_filepath)
+            except (IOError, OSError):
                 wstderr('WARNING: Could not move "%s" to "%s"' %
                         (tmp_job_filepath, dest_filepath))
             else:

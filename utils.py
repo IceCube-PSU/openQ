@@ -8,10 +8,11 @@ from __future__ import absolute_import
 from datetime import datetime, timedelta, tzinfo
 from grp import getgrnam
 from math import ceil
-from os import chmod, chown, listdir, makedirs, remove, rmdir, stat, utime
+from os import (chmod, chown, listdir, makedirs, remove, rename, rmdir, stat,
+                utime)
 from os.path import abspath, expanduser, expandvars, isdir, join
 import re
-from shutil import copy2, copytree
+from shutil import copy2, copytree, move
 from sys import stderr, stdout
 from time import altzone, daylight, localtime, mktime, time, timezone, tzname
 
@@ -26,6 +27,24 @@ def expand(path):
     """Shortcut to expand path or string"""
     return abspath(expanduser(expandvars(path)))
 
+
+def rename_or_move(src, dest):
+    """Try to move a file by first using `os.rename` or, if that fails, try
+    using `shutil.move`.
+
+    Parameters
+    ----------
+    src : string
+        Source path name
+
+    dest : string
+        Destination path name
+
+    """
+    try:
+        rename(src, dest)
+    except (IOError, OSError):
+        move(src, dest)
 
 def set_path_metadata(path, perms=None, group=None, mtime=None):
     """Set permissions, group, and/or modification time (mtime) on a path.

@@ -10,12 +10,13 @@ out=$( grep -E "^out = " "$srcdir"/config.ini | sed 's/out = //' | xargs )
 logdir=$basedir/$log
 outdir=$basedir/$out
 
-for run in {0..99}
+for run in {0..999}
 do
+	fname="user_${USER}_run_${run}.pbs"
     `sed -e "s|@@RUN@@|\${run}|g" \
 		-e "s|@@LOGDIR@@|\${logdir}|g" \
 		-e "s|@@OUTDIR@@|\${outdir}|g" \
-		job.in > run_${run}.pbs`
-     chgrp $grp run_${run}.pbs
-     chmod g+r run_${run}.pbs
+		job.in > "$fname"`
+     chgrp $grp "$fname"
+     chmod g+r "$fname"
 done
