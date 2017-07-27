@@ -24,22 +24,27 @@ SORT_COLS = ['cluster', 'queue', 'job_state', 'job_id']
 
 
 class Qstat(QstatBase):
+    """
+    Subclass of QstatBase for peforming more detailed analysis of qstat
+    output. Includes `print_summary` function which serves similarly to running
+    `qstat` from the command line. See QstatBase for args/kwargs.
+    """
     @property
     def jobs_df(self):
         """pandas.Dataframe : records of jobs' qstat reports"""
         # Return in-memory copy
         if not self.jobs_df_is_stale:
-            print 'jobs_df from memory'
+            #print 'jobs_df from memory'
             return self._jobs_df
 
         # Load from disk-cache file
         if self.jobs_df_fpath is not None and not self.jobs_df_file_is_stale:
-            print 'jobs_df from cache file'
+            #print 'jobs_df from cache file'
             self._jobs_df = pd.read_pickle(self.jobs_df_fpath)
             self._jobs_df_mtime = self.jobs_df_file_mtime
             return self._jobs_df
 
-        print 'jobs_df being parsed from `jobs`'
+        #print 'jobs_df being parsed from `jobs`'
 
         # Parse `jobs` -> `jobs_df` afresh
         self._jobs_df = self.make_jobs_dataframe(self.jobs)
@@ -126,19 +131,20 @@ class Qstat(QstatBase):
                 queue_num += 1
                 counts = qgrp.groupby('job_state')['job_state'].count()
                 if queue_num == 1:
-                    cl = cluster
+                    cluster_ = cluster
                 else:
-                    cl = ''
+                    cluster_ = ''
                 if len(queue) > label_width:
-                    qn = queue[:label_width-3] + '...'
+                    queue_name = queue[:label_width-3] + '...'
                 else:
-                    qn = queue
+                    queue_name = queue
 
                 q_counts = OrderedDict()
                 q_counts['R'] = counts.get('R', default=0)
                 q_counts['Q'] = counts.get('Q', default=0)
 
-                wstdout(fmt % (cl, qn, q_counts['R'], q_counts['Q'],
+                wstdout(fmt % (cluster_, queue_name, q_counts['R'],
+                               q_counts['Q'],
                                q_counts['R'] + q_counts['Q']))
             if queue_num > 1:
                 wstdout(fmt % ('',

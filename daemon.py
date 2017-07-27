@@ -12,10 +12,10 @@ from argparse import ArgumentParser
 from ConfigParser import ConfigParser
 from datetime import datetime
 from getpass import getuser
-from os import listdir, remove, rename
+from os import listdir, remove
 from os.path import dirname, getmtime, join, isdir, isfile, ismount
 from random import randint
-from shutil import copy2, copytree, rmtree
+from shutil import copy2, copytree, move, rmtree
 import signal
 from subprocess import CalledProcessError, check_output, STDOUT
 import sys
@@ -364,7 +364,7 @@ class Daemon(object):
         orig_job_filepath = join(job_dir, job)
         tmp_job_filepath = join(tmp_dir, job)
         try:
-            rename(orig_job_filepath, tmp_job_filepath)
+            move(orig_job_filepath, tmp_job_filepath)
         except OSError:
             wstderr('Could not move "%s" to "%s"; moving on.\n'
                     % (orig_job_filepath, tmp_job_filepath))
@@ -411,18 +411,18 @@ class Daemon(object):
                         + '\n'.join('> %s\n' % l for l in out.split('\n'))
                     )
                 wstderr(err_msg + '\n')
-                with open(qsub_err_filepath, 'w') as f:
-                    f.write(err_msg)
+                with open(qsub_err_filepath, 'w') as fobj:
+                    fobj.write(err_msg)
                 return False
 
             # Write qsub message(s) to file (esp. what job_id got # assigned)
-            with open(qsub_out_filepath, 'w') as f:
-                f.write(out)
+            with open(qsub_out_filepath, 'w') as fobj:
+                fobj.write(out)
             return True
 
         finally:
             try:
-                rename(tmp_job_filepath, dest_filepath)
+                move(tmp_job_filepath, dest_filepath)
             except OSError:
                 wstderr('WARNING: Could not move "%s" to "%s"' %
                         (tmp_job_filepath, dest_filepath))

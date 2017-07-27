@@ -22,9 +22,9 @@ __all__ = ['expand', 'wstdout', 'wstderr', 'get_xml_subnode', 'get_xml_val',
            'TZ_UTC', 'LocalTimezone', 'TZ_LOCAL']
 
 
-def expand(s):
+def expand(path):
     """Shortcut to expand path or string"""
-    return abspath(expanduser(expandvars(s)))
+    return abspath(expanduser(expandvars(path)))
 
 
 def mkdir(path, perms=None, group=None):
@@ -180,22 +180,22 @@ def get_xml_val(node, key):
     return val
 
 
-def hhmmss_to_timedelta(t):
+def hhmmss_to_timedelta(time_string):
     """Convert string like hh:mm:ss to a `datetime.timedelta`
-    object. If `t` is None, return None.
+    object. If `time_string` is None, return None.
 
     Parameters
     ----------
-    t : string or None
+    time_string : string or None
 
     Returns
     -------
     td : None or datetime.timedelta
 
     """
-    if t is None:
-        return t
-    fields = t.split(':')
+    if time_string is None:
+        return time_string
+    fields = time_string.split(':')
     field_order = ['days', 'hours', 'minutes', 'seconds']
     kwargs = {}
     for field_num, field in enumerate(fields[::-1]):
@@ -204,45 +204,47 @@ def hhmmss_to_timedelta(t):
     return timedelta(**kwargs)
 
 
-def to_bool(b):
+def to_bool(bool_string):
     """Convert string to bool or keep None if None"""
-    return b if b is None else bool(b)
+    return bool_string if bool_string is None else bool(bool_string)
 
 
-def to_int(i):
+def to_int(int_string):
     """Convert string to int or keep None if None"""
-    return i if i is None else int(i)
+    return int_string if int_string is None else int(int_string)
 
 
-def sec_since_epoch_to_datetime(s):
+def sec_since_epoch_to_datetime(sec):
     """Convert seconds since epoch into `datetime.datetime` object
 
     Parameters
     ----------
-    s : None or convertible to float
+    sec : None or convertible to float
 
     Returns
     -------
     dt : None or datetime.datetime
-        If `s` is None, returns None; otherwise, converts to datetime.datetime
+        If `sec` is None, returns None; otherwise, converts to
+        datetime.datetime
 
     """
-    if s is None:
-        return s
-    if isinstance(s, basestring):
-        s = float(s)
-    return datetime.fromtimestamp(s, tz=TZ_UTC).astimezone(TZ_LOCAL)
+    if sec is None:
+        return sec
+    if isinstance(sec, basestring):
+        sec = float(sec)
+    return datetime.fromtimestamp(sec, tz=TZ_UTC).astimezone(TZ_LOCAL)
 
 
 NUM_RE = re.compile(r'(?P<mag>\d+)(?P<scale>[kmgtpe]){0,1}(?:[b]{0,1})',
                     re.IGNORECASE)
 
-def to_bytes_size(s):
+def to_bytes_size(qstat_size):
     """Convert a qstat size string to int bytes.
 
     Parameters
     ----------
-    s : string
+    qstat_size : string
+        E.g. '1' or '1b' -> 1 byte, '1kb' -> 1 KiB, '1mb' -> 1 MiB, etc.
 
     Returns
     -------
@@ -256,9 +258,9 @@ def to_bytes_size(s):
     """
     scales = dict(k=1024, m=1024**2, g=1024**3, t=1024**4, p=1024**5,
                   e=1024**6)
-    match = NUM_RE.match(s)
+    match = NUM_RE.match(qstat_size)
     if match is None:
-        raise ValueError('Failed to parse quantity "%s"' % s)
+        raise ValueError('Failed to parse quantity "%s"' % qstat_size)
     groupdict = match.groupdict()
     if groupdict['scale'] is not None:
         factor = scales[groupdict['scale'].lower()]
@@ -308,11 +310,10 @@ class LocalTimezone(tzinfo):
 
     @staticmethod
     def _isdst(dt):
-        tt = (dt.year, dt.month, dt.day,
-              dt.hour, dt.minute, dt.second,
-              dt.weekday(), 0, 0)
-        stamp = mktime(tt)
-        tt = localtime(stamp)
-        return tt.tm_isdst > 0
+        stamp = mktime((dt.year, dt.month, dt.day,
+                        dt.hour, dt.minute, dt.second,
+                        dt.weekday(), 0, 0))
+        time_tuple = localtime(stamp)
+        return time_tuple.tm_isdst > 0
 
 TZ_LOCAL = LocalTimezone()

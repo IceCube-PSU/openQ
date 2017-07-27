@@ -189,28 +189,33 @@ class QstatBase(object):
 
     @property
     def xml_is_stale(self):
-        """bool : whether data from qstat is stale and needs to be refreshed"""
+        """bool : True if in-memory xml data from qstat is stale or missing"""
         return time() >= self.xml_mtime + self.stale_sec
 
     @property
     def jobs_is_stale(self):
+        """bool : True if in-memory `jobs` is stale or missing"""
         return time() >= self.jobs_mtime + self.stale_sec
 
     @property
     def jobs_df_is_stale(self):
+        """bool : True if in-memory `jobs_df` is stale or missing"""
         return time() >= self.jobs_df_mtime + self.stale_sec
 
     @property
     def xml_file_is_stale(self):
+        """bool : True if xml cache file is stale or missing"""
         return time() >= self.xml_file_mtime + self.stale_sec
 
     @property
     def jobs_file_is_stale(self):
+        """bool : True if jobs cache file is stale or missing"""
         jf_is_stale = time() >= self.jobs_file_mtime + self.stale_sec
         return self.xml_file_is_stale or jf_is_stale
 
     @property
     def jobs_df_file_is_stale(self):
+        """bool : True if jobs_df cache file is stale or missing"""
         jfdf_is_stale = time() >= self.jobs_df_file_mtime + self.stale_sec
         return self.jobs_file_is_stale or jfdf_is_stale
 
@@ -232,7 +237,7 @@ class QstatBase(object):
         # If we've already loaded qstat's output at some point, see if it is
         # not stale and return in-memory copy
         if not self.xml_is_stale:
-            print 'xml from memory'
+            #print 'xml from memory'
             return self._xml
 
         # Anything besides the above means we'll have to re-parse the xml to
@@ -241,7 +246,7 @@ class QstatBase(object):
 
         # Check if cache file exists and load if not stale
         if not self.xml_file_is_stale:
-            print 'xml from cache file'
+            #print 'xml from cache file'
             try:
                 with GzipFile(self.xml_fpath, mode='r') as fobj:
                     self._xml = fobj.read()
@@ -251,7 +256,7 @@ class QstatBase(object):
                 self._xml_mtime = self.xml_file_mtime
                 return self._xml
 
-        print 'xml from fresh invocation of qstat'
+        #print 'xml from fresh invocation of qstat'
 
         # Otherwise, run qstat again
         self._xml = check_output(['qstat', '-x'])
@@ -270,17 +275,17 @@ class QstatBase(object):
         """list of OrderedDict : records of each job qstat reports"""
         # Return in-memory copy
         if not self.jobs_is_stale:
-            print 'jobs from memory'
+            #print 'jobs from memory'
             return self._jobs
 
         # Load from cache file
         if not self.jobs_file_is_stale:
-            print 'jobs from cache file'
+            #print 'jobs from cache file'
             self._jobs = pickle.load(open(self.jobs_fpath, 'rb'))
             self._jobs_mtime = self.jobs_file_mtime
             return self._jobs
 
-        print 'jobs re-parsed from xml'
+        #print 'jobs re-parsed from xml'
 
         # Invalidate the dataframe (not implemented in this class, but in a
         # subclass Qstat; see `qstat.py`.)
