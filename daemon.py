@@ -340,6 +340,8 @@ class Daemon(object):
             usr, job = jobs.pop(idx)
             if self.qsub(usr=usr, job=job):
                 submitted += 1
+            else:
+                break
 
     def qsub(self, usr, job):
         """Submit a jobfile `job` from user `usr` to the open queue.
@@ -390,6 +392,7 @@ class Daemon(object):
             # job on the ACI open queue
             mail_options = '-m p'
             qsub_command = 'qsub %s -A open' % mail_options
+            out = None
             try:
                 out = check_output(qsub_command.split() + [tmp_job_filepath],
                                    stderr=STDOUT)
@@ -400,7 +403,8 @@ class Daemon(object):
 
                 # Report what went wrong with qsub command to stderr and write
                 # info to a file
-                err_msg = 'Failed to run command "%s"\n' % qsub_command
+                err_msg = 'Failed to run command "%s %s"\n' % (qsub_command,
+                                                               tmp_job_filepath)
                 if out is not None:
                     err_msg += (
                         'Output from command:\n'
