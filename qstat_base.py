@@ -10,12 +10,13 @@ output into Python datastructures.
 from __future__ import absolute_import
 
 from collections import OrderedDict
+import cPickle as pickle
 from datetime import timedelta
 from getpass import getuser
 from grp import getgrgid, getgrnam
 from gzip import GzipFile
 from numbers import Number
-from os import chmod, chown
+from os import chmod, chown, utime
 from os.path import getmtime, join, isdir, isfile
 import re
 from subprocess import check_output
@@ -87,9 +88,131 @@ class QstatBase(object):
             else:
                 assert group is None, str(group)
         self._xml = None
-        self._xml_mtime = None
         self._jobs = None
         self._jobs_df = None
+
+        self._xml_mtime = float('-inf')
+        self._jobs_mtime = float('-inf')
+        self._jobs_df_mtime = float('-inf')
+
+        self._xml_file_mtime = float('-inf')
+        self._jobs_file_mtime = float('-inf')
+        self._jobs_df_file_mtime = float('-inf')
+
+        self.xml_fpath = None
+        self.jobs_fpath = None
+        self.jobs_df_fpath = None
+        if self.cache_dir is not None:
+            self.xml_fpath = join(
+                self.cache_dir,
+                'qstat.%s.xml.gz' % self.myusername
+            )
+            self.jobs_fpath = join(
+                self.cache_dir,
+                'jobs.%s.pkl' % self.myusername
+            )
+            self.jobs_df_fpath = join(
+                self.cache_dir,
+                'jobs_df.%s.pkl.gz' % self.myusername
+            )
+
+        if not isdir(self.cache_dir):
+            mkdir(self.cache_dir, perms=0o770, group=self.gid)
+
+    def set_file_metadata(self, fpath, mtime=None):
+        """Set group, appropriate permissions, and optionally mtime on a
+        filepath. If `self.group` is not None, change the file's group
+        ownership to `self.group` and add read+write permissions on the file.
+
+        Parameters
+        ----------
+        fpath : string
+            Full file path
+
+        mtime : None or float
+            Seconds since the Unix epoch. If None, no modification to the
+            file's mtime is made.
+
+        """
+        if self.group is not None:
+            chown(fpath, -1, self.gid)
+            chmod(fpath, 0o660)
+
+        if mtime is not None:
+            access_time = time()
+            utime(fpath, (access_time, mtime))
+
+    @property
+    def xml_mtime(self):
+        """float : seconds since epoch; -inf if no cache or file not found"""
+        if self._xml is None:
+            self._xml_mtime = float('-inf')
+        return self._xml_mtime
+
+    @property
+    def jobs_mtime(self):
+        """float : seconds since epoch; -inf if no cache or file not found"""
+        if self._jobs is None:
+            self._jobs_mtime = float('-inf')
+        return self._jobs_mtime
+
+    @property
+    def jobs_df_mtime(self):
+        """float : seconds since epoch; -inf if no cache or file not found"""
+        if self._jobs_df is None:
+            self._jobs_df_mtime = float('-inf')
+        return self._jobs_df_mtime
+
+    @property
+    def xml_file_mtime(self):
+        """float : seconds since epoch; -inf if no cache or file not found"""
+        self._xml_file_mtime = float('-inf')
+        if self.xml_fpath is not None and isfile(self.xml_fpath):
+            self._xml_file_mtime = getmtime(self.xml_fpath)
+        return self._xml_file_mtime
+
+    @property
+    def jobs_file_mtime(self):
+        """float : seconds since epoch; -inf if no cache or file not found"""
+        self._jobs_file_mtime = float('-inf')
+        if self.jobs_fpath is not None and isfile(self.jobs_fpath):
+            self._jobs_file_mtime = getmtime(self.jobs_fpath)
+        return self._jobs_file_mtime
+
+    @property
+    def jobs_df_file_mtime(self):
+        """float : seconds since epoch; -inf if no cache or file not found"""
+        self._jobs_file_mtime = float('-inf')
+        if self.jobs_df_fpath is not None and isfile(self.jobs_df_fpath):
+            self._jobs_df_file_mtime = getmtime(self.jobs_df_fpath)
+        return self._jobs_df_file_mtime
+
+    @property
+    def xml_is_stale(self):
+        """bool : whether data from qstat is stale and needs to be refreshed"""
+        return time() >= self.xml_mtime + self.stale_sec
+
+    @property
+    def jobs_is_stale(self):
+        return time() >= self.jobs_mtime + self.stale_sec
+
+    @property
+    def jobs_df_is_stale(self):
+        return time() >= self.jobs_df_mtime + self.stale_sec
+
+    @property
+    def xml_file_is_stale(self):
+        return time() >= self.xml_file_mtime + self.stale_sec
+
+    @property
+    def jobs_file_is_stale(self):
+        jf_is_stale = time() >= self.jobs_file_mtime + self.stale_sec
+        return self.xml_file_is_stale or jf_is_stale
+
+    @property
+    def jobs_df_file_is_stale(self):
+        jfdf_is_stale = time() >= self.jobs_df_file_mtime + self.stale_sec
+        return self.jobs_file_is_stale or jfdf_is_stale
 
     @property
     def xml(self):
@@ -106,18 +229,10 @@ class QstatBase(object):
             Output from `qstat -x`
 
         """
-        fpath = None
-        if self.cache_dir is not None:
-            fpath = join(self.cache_dir, 'qstat.%s.xml.gz' % self.myusername)
-            if not isdir(self.cache_dir):
-                mkdir(self.cache_dir, perms=0o770, group=self.gid)
-
-        stale_before = time() - self.stale_sec
-
         # If we've already loaded qstat's output at some point, see if it is
-        # not stale
-        if (self._xml is not None and self._xml_mtime is not None
-                and self._xml_mtime > stale_before):
+        # not stale and return in-memory copy
+        if not self.xml_is_stale:
+            print 'xml from memory'
             return self._xml
 
         # Anything besides the above means we'll have to re-parse the xml to
@@ -125,54 +240,76 @@ class QstatBase(object):
         self._jobs = None
 
         # Check if cache file exists and load if not stale
-        if fpath is not None and isfile(fpath):
-            xml_mtime = getmtime(fpath)
-            if xml_mtime > stale_before:
-                try:
-                    with GzipFile(fpath, mode='r') as fobj:
-                        self._xml = fobj.read()
-                except Exception:
-                    pass
-                else:
-                    self._xml_mtime = xml_mtime
-                    return self._xml
+        if not self.xml_file_is_stale:
+            print 'xml from cache file'
+            try:
+                with GzipFile(self.xml_fpath, mode='r') as fobj:
+                    self._xml = fobj.read()
+            except Exception:
+                pass
+            else:
+                self._xml_mtime = self.xml_file_mtime
+                return self._xml
+
+        print 'xml from fresh invocation of qstat'
 
         # Otherwise, run qstat again
         self._xml = check_output(['qstat', '-x'])
         self._xml_mtime = time()
 
         # Update the cache file
-        if fpath is not None:
-            with GzipFile(fpath, mode='w') as fobj:
+        if self.xml_fpath is not None:
+            with GzipFile(self.xml_fpath, mode='w') as fobj:
                 fobj.write(self._xml)
-
-            if self.group is not None:
-                chown(fpath, -1, self.gid)
-                chmod(fpath, 0o660)
+            self.set_file_metadata(self.xml_fpath)
 
         return self._xml
 
     @property
     def jobs(self):
         """list of OrderedDict : records of each job qstat reports"""
-        # Note that this call will reload the XML if needed, and invalidates
-        # _jobs when the XML is relaoded.
-        xml = self.xml
-        if self._jobs is None:
-            attempts = 0
-            while True:
-                attempts += 1
-                try:
-                    self._jobs = self.parse_xml(xml)
-                except IOError:
-                    # Invalidate the XML, since the parse failed
-                    self._xml = None
-                    if attempts >= MAX_ATTEMPTS:
-                        raise
-                    sleep(5)
-                else:
-                    break
-            self._jobs_df = None
+        # Return in-memory copy
+        if not self.jobs_is_stale:
+            print 'jobs from memory'
+            return self._jobs
+
+        # Load from cache file
+        if not self.jobs_file_is_stale:
+            print 'jobs from cache file'
+            self._jobs = pickle.load(open(self.jobs_fpath, 'rb'))
+            self._jobs_mtime = self.jobs_file_mtime
+            return self._jobs
+
+        print 'jobs re-parsed from xml'
+
+        # Invalidate the dataframe (not implemented in this class, but in a
+        # subclass Qstat; see `qstat.py`.)
+        self._jobs_df = None
+
+        # Attempt to parse multiple times in case the XML was loaded in the
+        # middle of being written (which would break the parsing done here)
+        attempts = 0
+        while True:
+            attempts += 1
+            try:
+                self._jobs = self.parse_xml(self.xml)
+            except IOError:
+                # Invalidate the XML, since the parse failed
+                self._xml = None
+                if attempts >= MAX_ATTEMPTS:
+                    raise
+                sleep(5)
+            else:
+                break
+
+        self._jobs_mtime = time()
+
+        # Cache to disk
+        if self.jobs_fpath is not None:
+            pickle.dump(self._jobs, open(self.jobs_fpath, 'wb'),
+                        protocol=pickle.HIGHEST_PROTOCOL)
+            self.set_file_metadata(self.jobs_fpath, mtime=self.xml_file_mtime)
+
         return self._jobs
 
     @staticmethod
