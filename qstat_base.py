@@ -16,7 +16,6 @@ from getpass import getuser
 from grp import getgrgid, getgrnam
 from gzip import GzipFile
 from numbers import Number
-from os import chmod, chown, utime
 from os.path import getmtime, join, isdir, isfile
 import re
 from subprocess import check_output
@@ -25,7 +24,7 @@ from xml.etree import ElementTree
 
 from utils import (expand, get_xml_subnode, get_xml_val, hhmmss_to_timedelta,
                    mkdir, to_bool, to_int, sec_since_epoch_to_datetime,
-                   to_bytes_size)
+                   set_path_metadata, to_bytes_size)
 
 
 __all__ = ['ARRAY_RE', 'CYBERLAMP_QUEUES', 'ACI_QUEUES', 'QstatBase']
@@ -119,7 +118,7 @@ class QstatBase(object):
         if not isdir(self.cache_dir):
             mkdir(self.cache_dir, perms=0o770, group=self.gid)
 
-    def set_file_metadata(self, fpath, mtime=None):
+    def set_path_metadata(self, fpath, mtime=None):
         """Set group, appropriate permissions, and optionally mtime on a
         filepath. If `self.group` is not None, change the file's group
         ownership to `self.group` and add read+write permissions on the file.
@@ -134,13 +133,14 @@ class QstatBase(object):
             file's mtime is made.
 
         """
+        perms = None
         if self.group is not None:
-            chown(fpath, -1, self.gid)
-            chmod(fpath, 0o660)
-
-        if mtime is not None:
-            access_time = time()
-            utime(fpath, (access_time, mtime))
+            if isdir(fpath):
+                perms = 0o770
+            elif isfile(fpath):
+                perms = 0o660
+        set_path_metadata(path=fpath, perms=perms, group=self.group,
+                          mtime=mtime)
 
     @property
     def xml_mtime(self):
@@ -266,7 +266,7 @@ class QstatBase(object):
         if self.xml_fpath is not None:
             with GzipFile(self.xml_fpath, mode='w') as fobj:
                 fobj.write(self._xml)
-            self.set_file_metadata(self.xml_fpath)
+            self.set_path_metadata(self.xml_fpath)
 
         return self._xml
 
@@ -313,7 +313,7 @@ class QstatBase(object):
         if self.jobs_fpath is not None:
             pickle.dump(self._jobs, open(self.jobs_fpath, 'wb'),
                         protocol=pickle.HIGHEST_PROTOCOL)
-            self.set_file_metadata(self.jobs_fpath, mtime=self.xml_file_mtime)
+            self.set_path_metadata(self.jobs_fpath, mtime=self.xml_file_mtime)
 
         return self._jobs
 

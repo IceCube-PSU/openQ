@@ -52,7 +52,7 @@ class Qstat(QstatBase):
 
         if self.jobs_df_fpath is not None:
             self._jobs_df.to_pickle(self.jobs_df_fpath)
-            self.set_file_metadata(self.jobs_df_fpath,
+            self.set_path_metadata(self.jobs_df_fpath,
                                    mtime=self.xml_file_mtime)
 
         return self._jobs_df

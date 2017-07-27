@@ -22,8 +22,8 @@ import sys
 from time import sleep
 
 from qstat_base import QstatBase
-from utils import (copy_contents, expand, mkdir, remove_contents, TZ_LOCAL,
-                   wstderr, wstdout)
+from utils import (copy_contents, expand, mkdir, remove_contents,
+                   set_path_metadata, TZ_LOCAL, wstderr, wstdout)
 
 
 __all__ = ['APPLICATION_PATH', 'APPLICATION_DIR', 'APPLICATION_MTIME',
@@ -369,6 +369,8 @@ class Daemon(object):
             wstderr('Could not move "%s" to "%s"; moving on.\n'
                     % (orig_job_filepath, tmp_job_filepath))
             return False
+        else:
+            set_path_metadata(tmp_job_filepath, group=self.group, perms=0o660)
 
         submitted_dir = self.getpath(dir_kind='sub', usr=usr)
         submitted_filepath = join(submitted_dir, job)
@@ -426,6 +428,9 @@ class Daemon(object):
             except OSError:
                 wstderr('WARNING: Could not move "%s" to "%s"' %
                         (tmp_job_filepath, dest_filepath))
+            else:
+                set_path_metadata(dest_filepath, group=self.group,
+                                  perms=0o660)
 
     def serve_forever(self):
         """Main loop"""

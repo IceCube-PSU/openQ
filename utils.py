@@ -8,23 +8,66 @@ from __future__ import absolute_import
 from datetime import datetime, timedelta, tzinfo
 from grp import getgrnam
 from math import ceil
-from os import chmod, chown, listdir, makedirs, remove, rmdir, stat
+from os import chmod, chown, listdir, makedirs, remove, rmdir, stat, utime
 from os.path import abspath, expanduser, expandvars, isdir, join
 import re
 from shutil import copy2, copytree
 from sys import stderr, stdout
-from time import timezone, altzone, daylight, tzname, mktime, localtime
+from time import altzone, daylight, localtime, mktime, time, timezone, tzname
 
 
-__all__ = ['expand', 'wstdout', 'wstderr', 'get_xml_subnode', 'get_xml_val',
-           'hhmmss_to_timedelta', 'to_bool', 'to_int',
-           'sec_since_epoch_to_datetime', 'to_bytes_size', 'UTCTimezone',
-           'TZ_UTC', 'LocalTimezone', 'TZ_LOCAL']
+__all__ = ['expand', 'set_path_metadata', 'wstdout', 'wstderr',
+           'get_xml_subnode', 'get_xml_val', 'hhmmss_to_timedelta', 'to_bool',
+           'to_int', 'sec_since_epoch_to_datetime', 'to_bytes_size',
+           'UTCTimezone', 'TZ_UTC', 'LocalTimezone', 'TZ_LOCAL']
 
 
 def expand(path):
     """Shortcut to expand path or string"""
     return abspath(expanduser(expandvars(path)))
+
+
+def set_path_metadata(path, perms=None, group=None, mtime=None):
+    """Set permissions, group, and/or modification time (mtime) on a path.
+
+    Parameters
+    ----------
+    path : string
+        Full file path
+
+    perms
+        Permissions
+
+    group : None, int, or string
+        If int, interpret as group ID (GID); if string, interpret as group
+        name; if None, do not change group on the file.
+
+    mtime : None or float
+        Seconds since the Unix epoch. If None, no modification to the
+        file's mtime is made.
+
+    """
+    path = expand(path)
+
+    if isinstance(group, basestring):
+        gid = getgrnam(group).gr_gid
+    elif isinstance(group, int):
+        gid = group
+    else:
+        assert group is None
+
+    # Set permissions
+    if perms is not None:
+        chmod(path, perms)
+
+    # Change group owner (note that -1 keeps user the same)
+    if group is not None and stat(path).st_gid != gid:
+        chown(path, -1, gid)
+
+    # Change modification time on the file to `mtime`; set access time to now
+    if mtime is not None:
+        access_time = time()
+        utime(path, (access_time, mtime))
 
 
 def mkdir(path, perms=None, group=None):
@@ -45,25 +88,13 @@ def mkdir(path, perms=None, group=None):
 
     """
     path = expand(path)
-    if isinstance(group, basestring):
-        gid = getgrnam(group).gr_gid
-    elif isinstance(group, int):
-        gid = group
-    else:
-        assert group is None
 
     # Make dir if doesn't exist; will error out if path exists but is a file
     # (as desired)
     if not isdir(path):
         makedirs(path)
 
-    # Set permissions
-    if perms is not None:
-        chmod(path, perms)
-
-    # Change group owner (note that -1 keeps user the same)
-    if group is not None and stat(path).st_gid != gid:
-        chown(path, -1, gid)
+    set_path_metadata(path=path, perms=perms, group=group)
 
 
 def copy_contents(srcdir, destdir):
