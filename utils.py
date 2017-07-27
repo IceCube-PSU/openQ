@@ -77,16 +77,25 @@ def set_path_metadata(path, perms=None, group=None, mtime=None):
 
     # Set permissions
     if perms is not None:
-        chmod(path, perms)
+        try:
+            chmod(path, perms)
+        except (IOError, OSError) as err:
+            pass
 
     # Change group owner (note that -1 keeps user the same)
     if group is not None and stat(path).st_gid != gid:
-        chown(path, -1, gid)
+        try:
+            chown(path, -1, gid)
+        except (IOError, OSError) as err:
+            pass
 
     # Change modification time on the file to `mtime`; set access time to now
     if mtime is not None:
         access_time = time()
-        utime(path, (access_time, mtime))
+        try:
+            utime(path, (access_time, mtime))
+        except (IOError, OSError) as err:
+            pass
 
 
 def mkdir(path, perms=None, group=None):

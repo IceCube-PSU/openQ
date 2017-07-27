@@ -41,12 +41,13 @@ chmod g+r ~/.pid
 export PATH="$oldpath"
 
 printf "Waiting 5 seconds to ensure daemon remains alive.\n5"
-for i in {4..0}; do sleep 1; printf "\r$(tput el)%d" $i; done
+for i in {4..0}; do sleep 1; printf "\r%d" $i; done
 printf "\n"
 
 if kill -0 $PID >/dev/null 2>&1
 then
-	echo "SUCCESS: openQ daemon has been deployed successfully. Proc name: \"$pname\", PID: $PID"
+	echo "SUCCESS: openQ daemon has been deployed successfully."
+	echo "Host name: $HOSTNAME,  proc name: \"$pname\", PID: $PID"
 	exit 0
 else
 	echo "FAILURE: openQ daemon did not start or died. Please report any error messages emitted above."
