@@ -6,21 +6,31 @@ Assortment of utility functions and classes
 from __future__ import absolute_import
 
 from datetime import datetime, timedelta, tzinfo
-from grp import getgrnam
+from grp import getgrgid, getgrnam
 from math import ceil
-from os import (chmod, chown, listdir, makedirs, remove, rename, rmdir, stat,
-                utime)
+import os
+from os import (chmod, chown, getgroups, listdir, makedirs, remove, rename,
+                rmdir, stat, utime)
 from os.path import abspath, expanduser, expandvars, isdir, join
 import re
 from shutil import copy2, copytree, move
 from sys import stderr, stdout
 from time import altzone, daylight, localtime, mktime, time, timezone, tzname
 
+if __name__ == '__main__' and __package__ is None:
+    os.sys.path.append(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    )
+
+from openQ import GPU_GROUPS
+
 
 __all__ = ['expand', 'set_path_metadata', 'wstdout', 'wstderr',
            'get_xml_subnode', 'get_xml_val', 'hhmmss_to_timedelta', 'to_bool',
            'to_int', 'sec_since_epoch_to_datetime', 'to_bytes_size',
-           'UTCTimezone', 'TZ_UTC', 'LocalTimezone', 'TZ_LOCAL']
+           'UTCTimezone', 'TZ_UTC', 'LocalTimezone', 'TZ_LOCAL', 'GPUS_RE',
+           'QOS_RE', 'parse_pbs_command_file', 'gpu_access']
+
 
 
 def expand(path):
@@ -79,14 +89,14 @@ def set_path_metadata(path, perms=None, group=None, mtime=None):
     if perms is not None:
         try:
             chmod(path, perms)
-        except (IOError, OSError) as err:
+        except (IOError, OSError):
             pass
 
     # Change group owner (note that -1 keeps user the same)
     if group is not None and stat(path).st_gid != gid:
         try:
             chown(path, -1, gid)
-        except (IOError, OSError) as err:
+        except (IOError, OSError):
             pass
 
     # Change modification time on the file to `mtime`; set access time to now
@@ -94,7 +104,7 @@ def set_path_metadata(path, perms=None, group=None, mtime=None):
         access_time = time()
         try:
             utime(path, (access_time, mtime))
-        except (IOError, OSError) as err:
+        except (IOError, OSError):
             pass
 
 
@@ -376,3 +386,93 @@ class LocalTimezone(tzinfo):
         return time_tuple.tm_isdst > 0
 
 TZ_LOCAL = LocalTimezone()
+
+
+GPUS_RE = re.compile(
+    r'''
+    gpus=(?P<gpus>\d+)             # gpus= technically 0-4 spec
+    (
+        (?P<shared>[:]shared)      # followed by :shared
+        |                          # ... or ...
+        (?P<reseterr>[:]reseterr)  # followed by :reseterr
+    ){0,2}'                        # 0, 1, or 2 of these (can't handle dupes)
+    ''', re.VERBOSE | re.IGNORECASE
+)
+
+QOS_RE = re.compile(r'qos=([^:]+)', re.IGNORECASE)
+
+def parse_pbs_command_file(path):
+    """For now, this actually only cares if the job calls out GPUs:
+    * Either not specified or 0 => no-GPU job
+    * 1 => either cl_gpu or cl_higpu
+    * (1, 4] => cl_higpu
+
+    Returns
+    -------
+    info : dict
+        `info` dict has the format:
+            {
+                'gpus': <int>,
+                'shared': <bool>,
+                'reseterr': <bool>,
+                'qos': <string or None>
+            }
+
+    """
+    gpus = 0
+    shared = False
+    reseterr = False
+    qos = None
+    with open(path, 'rU') as pbs_file:
+        for line in pbs_file:
+            # Don't care about leading or trailing whitespace
+            stripped = line.strip()
+
+            # Stop at first non-blank / non-comment line
+            if not (stripped == '' or stripped[0] == '#'):
+                break
+
+            # Only care about PBS commands
+            if not stripped.startswith('#PBS'):
+                continue
+            command = stripped[4:].strip()
+
+            # Specifically only parsing -l commands
+            if not command.startswith('-l'):
+                continue
+            arg = command[2:].strip()
+
+            for match in GPUS_RE.finditer(arg):
+                groupdict = match.groupdict()
+                gpus = int(groupdict['gpus'])
+                shared = True if groupdict['shared'] else False
+                reseterr = True if groupdict['reseterr'] else False
+                break
+
+            for match in QOS_RE.finditer(arg):
+                qos = match.groups()[0]
+                break
+
+    return dict(gpus=gpus, shared=shared, reseterr=reseterr,
+                qos=qos)
+
+
+def gpu_access():
+    """Does current user have access to CyberLAMP GPU queues?
+
+    Returns
+    -------
+    gpu_access_by_cluster : dict
+        Keys are cluster names and values are bools (True for access to GPUs
+        on that cluster)
+
+    """
+    my_groups = [getgrgid(gid).gr_name for gid in getgroups()]
+    gpu_access_by_cluster = {}
+    for cluster, required_groups in GPU_GROUPS.items():
+        gpu_access_by_cluster[cluster] = True
+        for required_group in required_groups:
+            if required_group not in my_groups:
+                gpu_access_by_cluster[cluster] = False
+                break
+    return gpu_access_by_cluster

@@ -16,31 +16,28 @@ from getpass import getuser
 from grp import getgrgid, getgrnam
 from gzip import GzipFile
 from numbers import Number
+import os
 from os.path import getmtime, join, isdir, isfile
 import re
 from subprocess import check_output
 from time import sleep, time
 from xml.etree import ElementTree
 
-from utils import (expand, get_xml_subnode, get_xml_val, hhmmss_to_timedelta,
-                   mkdir, to_bool, to_int, sec_since_epoch_to_datetime,
-                   set_path_metadata, to_bytes_size)
+if __name__ == '__main__' and __package__ is None:
+    os.sys.path.append(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    )
+from openQ import ACI_QUEUES
+from openQ.utils import (expand, get_xml_subnode, get_xml_val,
+                         hhmmss_to_timedelta, mkdir, to_bool, to_int,
+                         sec_since_epoch_to_datetime, set_path_metadata,
+                         to_bytes_size)
 
 
-__all__ = ['ARRAY_RE', 'CYBERLAMP_QUEUES', 'ACI_QUEUES', 'QstatBase']
+__all__ = ['ARRAY_RE', 'MAX_ATTEMPTS', 'QstatBase']
 
 
 ARRAY_RE = re.compile(r'(?P<body>.*)\.(?P<index>\d+)$')
-
-CYBERLAMP_QUEUES = [
-    'default', 'cl_open', 'cl_gpu', 'cl_higpu', 'cl_himem', 'cl_debug',
-    'cl_phi'
-]
-
-ACI_QUEUES = [
-    'dfc13_a_g_sc_default', 'dfc13_a_t_bc_default', 'open'
-]
-
 MAX_ATTEMPTS = 15
 
 
@@ -55,6 +52,11 @@ class QstatBase(object):
         Forces at least this much time between invocations of the qctual
         `qstat` command by storing to / reading from the cache
 
+    username : None or string
+        Username for which to get qstat info. Note that if username is NOT
+        $USER (the user running the code), the actual `qstat` command cannot be
+        invoked and therefore any info must be read from a cache file.
+
     cache_dir : None or string
         Directory in which to save cached qstat output. If `None`, no caching
         to disk will be performed.
@@ -66,7 +68,7 @@ class QstatBase(object):
         accordingly and set group read/write permissions on the file.
 
     """
-    def __init__(self, stale_sec, cache_dir=None, group=None):
+    def __init__(self, stale_sec, username=None, cache_dir=None, group=None):
         assert isinstance(stale_sec, Number)
         self.stale_sec = stale_sec
         if isinstance(cache_dir, basestring):
@@ -75,6 +77,12 @@ class QstatBase(object):
             assert cache_dir is None
         self.cache_dir = cache_dir
         self.myusername = getuser()
+        self.username = username or self.myusername
+        if self.username != self.myusername and cache_dir is None:
+            raise ValueError('Cannot run `qstat` for any user besides %s, but'
+                             ' requested qstat info for user %s.'
+                             % (self.myusername, self.username))
+
         self.gid = None
         self.group = None
         if self.cache_dir is not None:
@@ -104,15 +112,15 @@ class QstatBase(object):
         if self.cache_dir is not None:
             self.xml_fpath = join(
                 self.cache_dir,
-                'qstat.%s.xml.gz' % self.myusername
+                'qstat.%s.xml.gz' % self.username
             )
             self.jobs_fpath = join(
                 self.cache_dir,
-                'jobs.%s.pkl' % self.myusername
+                'jobs.%s.pkl' % self.username
             )
             self.jobs_df_fpath = join(
                 self.cache_dir,
-                'jobs_df.%s.pkl.gz' % self.myusername
+                'jobs_df.%s.pkl.gz' % self.username
             )
 
         if not isdir(self.cache_dir):
@@ -190,33 +198,44 @@ class QstatBase(object):
     @property
     def xml_is_stale(self):
         """bool : True if in-memory xml data from qstat is stale or missing"""
-        return time() >= self.xml_mtime + self.stale_sec
+        return self._xml is None or time() - self.xml_mtime >= self.stale_sec
 
     @property
     def jobs_is_stale(self):
         """bool : True if in-memory `jobs` is stale or missing"""
-        return time() >= self.jobs_mtime + self.stale_sec
+        return self._jobs is None or time() - self.jobs_mtime >= self.stale_sec
 
     @property
     def jobs_df_is_stale(self):
         """bool : True if in-memory `jobs_df` is stale or missing"""
-        return time() >= self.jobs_df_mtime + self.stale_sec
+        return (self._jobs_df is None
+                or time() - self.jobs_df_mtime >= self.stale_sec)
 
     @property
     def xml_file_is_stale(self):
         """bool : True if xml cache file is stale or missing"""
-        return time() >= self.xml_file_mtime + self.stale_sec
+        return (self.xml_fpath is None
+                or not isfile(self.xml_fpath)
+                or time() - self.xml_file_mtime >= self.stale_sec)
 
     @property
     def jobs_file_is_stale(self):
         """bool : True if jobs cache file is stale or missing"""
-        jf_is_stale = time() >= self.jobs_file_mtime + self.stale_sec
+        jf_is_stale = (
+            self.jobs_fpath is None
+            or not isfile(self.jobs_fpath)
+            or time() - self.jobs_file_mtime >= self.stale_sec
+        )
         return self.xml_file_is_stale or jf_is_stale
 
     @property
     def jobs_df_file_is_stale(self):
         """bool : True if jobs_df cache file is stale or missing"""
-        jfdf_is_stale = time() >= self.jobs_df_file_mtime + self.stale_sec
+        jfdf_is_stale = (
+            self.jobs_df_fpath is None
+            or not isfile(self.jobs_df_fpath)
+            or time() - self.jobs_df_file_mtime >= self.stale_sec
+        )
         return self.jobs_file_is_stale or jfdf_is_stale
 
     @property
@@ -226,7 +245,7 @@ class QstatBase(object):
         command again.
 
         Note the cache file, if `cache_dir` is not None, is written to
-        ``<self.cache_dir>/qstat.<self.myusername>.xml.gz``
+        ``<self.cache_dir>/qstat.<self.username>.xml.gz``
 
         Returns
         -------
@@ -258,7 +277,8 @@ class QstatBase(object):
 
         #print 'xml from fresh invocation of qstat'
 
-        # Otherwise, run qstat again
+        # Otherwise, run qstat again, if this is possible (qstat only returns
+        # info for myusername)
         self._xml = check_output(['qstat', '-x'])
         self._xml_mtime = time()
 
@@ -281,9 +301,13 @@ class QstatBase(object):
         # Load from cache file
         if not self.jobs_file_is_stale:
             #print 'jobs from cache file'
-            self._jobs = pickle.load(open(self.jobs_fpath, 'rb'))
-            self._jobs_mtime = self.jobs_file_mtime
-            return self._jobs
+            try:
+                self._jobs = pickle.load(open(self.jobs_fpath, 'rb'))
+            except Exception:
+                pass
+            else:
+                self._jobs_mtime = self.jobs_file_mtime
+                return self._jobs
 
         #print 'jobs re-parsed from xml'
 

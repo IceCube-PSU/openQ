@@ -12,19 +12,25 @@ from argparse import ArgumentParser
 from ConfigParser import ConfigParser
 from datetime import datetime
 from getpass import getuser
+import os
 from os import listdir, remove
 from os.path import dirname, getmtime, join, isdir, isfile, ismount
 from random import randint
-from shutil import copy2, copytree, move, rmtree
+from shutil import copy2, copytree, rmtree
 import signal
 from subprocess import CalledProcessError, check_output, STDOUT
 import sys
 from time import sleep
 
-from qstat_base import QstatBase
-from utils import (copy_contents, expand, mkdir, remove_contents,
-                   rename_or_move, set_path_metadata, TZ_LOCAL, wstderr,
-                   wstdout)
+if __name__ == '__main__' and __package__ is None:
+    os.sys.path.append(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    )
+from openQ import DEFAULT_CONFIG
+from openQ.qstat_base import QstatBase
+from openQ.utils import (copy_contents, expand, mkdir, remove_contents,
+                         rename_or_move, set_path_metadata, TZ_LOCAL, wstderr,
+                         wstdout)
 
 
 __all__ = ['APPLICATION_PATH', 'APPLICATION_DIR', 'APPLICATION_MTIME',
@@ -79,7 +85,7 @@ class Daemon(object):
     """
     def __init__(self, configfile):
         self.myusername = getuser()
-        self.config = ConfigParser()
+        self.config = None
         self.configfile = expand(configfile)
         self.configdir = dirname(self.configfile)
         self.distfile = join(self.configdir, 'dist', 'daemon')
@@ -229,7 +235,8 @@ class Daemon(object):
 
             # TODO/NOTE: the following fails due to e.g.:
             # OSError: [Errno 16] Device or resource busy: '~/.dist/.nfs0000000000e2e11900000ea1'
-            # but we want to keep going in this case, so for now ignoring OSError
+            # but we want to keep going in this case, so for now ignoring
+            # OSError
             remove_contents(APPLICATION_DIR)
 
             copy_contents(backupdir, APPLICATION_DIR)
@@ -452,7 +459,7 @@ def parse_args(description=__doc__):
     """Parse and return command-line arguments"""
     parser = ArgumentParser(description=description)
     parser.add_argument(
-        '--config', type=str, default='~jll1062/openQ/config.ini',
+        '--config', type=str, default=DEFAULT_CONFIG,
         help='''Path to config file.'''
     )
     args = parser.parse_args()

@@ -10,16 +10,25 @@ from __future__ import absolute_import
 
 from argparse import ArgumentParser
 from collections import OrderedDict
+from ConfigParser import ConfigParser
+import os
 
 import pandas as pd
 
-from qstat_base import QstatBase
-from utils import wstdout
+
+if __name__ == '__main__' and __package__ is None:
+    os.sys.path.append(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    )
+from openQ import DEFAULT_CACHE_DIR, DEFAULT_CONFIG, DEFAULT_GROUP
+from openQ.qstat_base import QstatBase
+from openQ.utils import wstdout
 
 
-__all__ = ['SORT_COLS', 'Qstat', 'parse_args', 'main']
+__all__ = ['DEFAULT_STALE_SEC', 'SORT_COLS', 'Qstat', 'parse_args', 'main']
 
 
+DEFAULT_STALE_SEC = 120
 SORT_COLS = ['cluster', 'queue', 'job_state', 'job_id']
 
 
@@ -40,9 +49,13 @@ class Qstat(QstatBase):
         # Load from disk-cache file
         if self.jobs_df_fpath is not None and not self.jobs_df_file_is_stale:
             #print 'jobs_df from cache file'
-            self._jobs_df = pd.read_pickle(self.jobs_df_fpath)
-            self._jobs_df_mtime = self.jobs_df_file_mtime
-            return self._jobs_df
+            try:
+                self._jobs_df = pd.read_pickle(self.jobs_df_fpath)
+            except Exception:
+                pass
+            else:
+                self._jobs_df_mtime = self.jobs_df_file_mtime
+                return self._jobs_df
 
         #print 'jobs_df being parsed from `jobs`'
 
@@ -161,22 +174,44 @@ def parse_args(description=__doc__):
     """parse command-line args"""
     parser = ArgumentParser(description=description)
     parser.add_argument(
-        '--stale-sec', type=int, default=120,
+        '--stale-sec', type=int, default=DEFAULT_STALE_SEC,
         help='''Seconds before cached qstat output is deemed stale. Default is
-        60 seconds.'''
+        %d seconds.''' % DEFAULT_STALE_SEC
     )
     parser.add_argument(
-        '--cache-dir', type=str, default='/gpfs/group/dfc13/default/qstat_out',
+        '--config', type=str, default=DEFAULT_CONFIG,
+        help='''openQ config file to use (for retrieving openQ users). Default
+        is "%s".''' % DEFAULT_CONFIG
+    )
+    parser.add_argument(
+        '--cache-dir', type=str, default=DEFAULT_CACHE_DIR,
         help='''Directory into which to cache output of qstat. Specify an empty
-        string, i.e. "", in order to disable caching.'''
+        string, i.e. "", in order to disable caching. Default is "%s"'''
+        % DEFAULT_CACHE_DIR
     )
     parser.add_argument(
-        '--group', type=str, default='dfc13_collab',
+        '--group', type=str, default=None,
         help='''Group for changing group ownership/permissions. Specify an
         empty string, i.e. "", in order to disable group modification of the
-        produced cache files. (This has no effect if caching is disabled.)'''
+        produced cache files. If not specified, defaults to group from the
+        config file (--config option). (Note that this has no effect if caching
+        is disabled.)'''
+    )
+    parser.add_argument(
+        '--users', type=str, default=None,
+        help='''Specify specific user(s) to retrieve for. If none are provided
+        (and --all isn't specified), retrieve info for just your own user. Do
+        not spcify both this option and --all.'''
+    )
+    parser.add_argument(
+        '--all', action='store_true',
+        help='''Retrieve info for all openQ users. Do not specify --all.'''
     )
     args = parser.parse_args()
+
+    if args.all and args.users is not None:
+        raise ValueError('Either specify --all or --users <...>, but not'
+                         ' both.')
 
     # Convert empty strings into None, else keep a non-empty string
     args.cache_dir = args.cache_dir or None
@@ -188,8 +223,24 @@ def parse_args(description=__doc__):
 def main():
     """Main"""
     args = parse_args()
-    qstat = Qstat(**vars(args))
-    qstat.print_summary()
+
+    config = ConfigParser()
+    config.read(args.config)
+
+    if args.all:
+        users = sorted(config.get('Users', 'list').split(','))
+    elif args.users is not None:
+        users = sorted(args.users)
+    else:
+        users = [None]
+
+    if args.group is None:
+        args.group = config.get('Users', 'group')
+
+    if len(users) == 1:
+        qstat = Qstat(stale_sec=args.stale_sec, username=users[0],
+                      cache_dir=args.cache_dir, group=args.group)
+        qstat.print_summary()
 
 
 if __name__ == '__main__':
