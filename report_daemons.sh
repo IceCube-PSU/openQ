@@ -1,8 +1,10 @@
 #!/bin/bash
 
-printf "   %-8s  %-51s  %5s  %6s\n" User Host PID "Daemon"
-printf "   %-8s  %-51s  %5s  %6s\n" "--------" "---------------------------------------------------" "-----" "------"
+printf "%2s %-8s  %-51s  %5s\n" "D?" "User" "Host" "PID"
+printf "%2s %-8s  %-51s  %5s\n" "--" "--------" "---------------------------------------------------" "-----"
 
+up_count=0
+down_count=0
 for u in $( grep "list = " ~jll1062/openQ/config.ini | sed -e 's/list = //' -e 's/,/\n/g' | sort | xargs )
 do
 	num_lines=$( cat ~/../${u}/.pid 2>/dev/null | wc -l 2>/dev/null )
@@ -27,10 +29,11 @@ do
 	if [ -z "$output" ]
 	then
 		prefix=" "
-	  	suffix="No"
+		down_count=$(( down_count + 1))
 	else
 		prefix="o"
-	  	suffix="Yes"
+		up_count=$(( up_count + 1))
 	fi
-	printf " %1s %-8s  %-51s  %5d  %6s\n" "$prefix" "$u" "$host" "$pid" "$suffix"
+	printf "%2s %-8s  %-51s  %5d\n" "$prefix" "$u" "$host" "$pid"
 done
+printf '\nTotal: %d openQ users; %d running and %d stopped.\n\n' "$(( up_count + down_count ))" "$up_count" "$down_count"
