@@ -20,7 +20,7 @@ do
 			output=""
 		elif [ "$host" != "$HOSTNAME" ]
 		then
-			output=$( ssh $host "ps h $pid" )
+			output=$( \ssh -q --norc $host "export TERM=linux ; /bin/ps h $pid" 2>/dev/null )
 		else
 			output=$( ps h $pid )
 		fi
