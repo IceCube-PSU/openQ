@@ -15,7 +15,7 @@ from getpass import getuser
 from os import listdir, remove
 from os.path import dirname, getmtime, join, isdir, isfile, ismount
 from random import randint
-from shutil import copy2, copytree, move, rmtree
+from shutil import copy2, copytree, rmtree
 import signal
 from subprocess import CalledProcessError, check_output, STDOUT
 import sys
@@ -416,11 +416,13 @@ class Daemon(object):
                 wstderr(err_msg + '\n')
                 with open(qsub_err_filepath, 'w') as fobj:
                     fobj.write(err_msg)
+                set_path_metadata(qsub_err_filepath)
                 return False
 
             # Write qsub message(s) to file (esp. what job_id got # assigned)
             with open(qsub_out_filepath, 'w') as fobj:
                 fobj.write(out)
+            set_path_metadata(qsub_out_filepath)
             return True
 
         finally:
