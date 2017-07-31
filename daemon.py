@@ -9,20 +9,22 @@ Submit job files located in a directory to ACI open queue.
 from __future__ import absolute_import
 
 from argparse import ArgumentParser
+import atexit
 from ConfigParser import ConfigParser
 from datetime import datetime
 from getpass import getuser
-from os import listdir, remove
+from os import dup2, fork, getpid, listdir, remove, setgid, setsid, umask
 from os.path import dirname, getmtime, join, isdir, isfile, ismount
 from random import randint
 from shutil import copy2, copytree, rmtree
 import signal
+from socket import gethostname
 from subprocess import CalledProcessError, check_output, STDOUT
 import sys
 from time import sleep
 
 from qstat_base import QstatBase
-from utils import (copy_contents, expand, mkdir, remove_contents,
+from utils import (copy_contents, expand, get_gid, mkdir, remove_contents,
                    rename_or_move, set_path_metadata, TZ_LOCAL, wstderr,
                    wstdout)
 
@@ -53,7 +55,7 @@ RESPAWN_DELAY_SEC = 10
 # TODO: get signal handling / respawning working.
 #def sighandler(signum, frame):
 #    signame = SIGNAL_MAP[signum]
-#    wstdout('Received signum %d (%s); relaunching daemon.\n'
+#    wstderr('Received signum %d (%s); relaunching daemon.\n'
 #            % (signum, signame))
 #    out = check_output(join(self.configdir, 'deploy.sh'))
 #
@@ -77,7 +79,7 @@ class Daemon(object):
     configfile : string
 
     """
-    def __init__(self, configfile):
+    def __init__(self, configfile, daemon=True):
         self.myusername = getuser()
         self.config = ConfigParser()
         self.configfile = expand(configfile)
@@ -89,6 +91,12 @@ class Daemon(object):
         self.configured = False
         self.reconf()
         self.queue_stat = {'q': 0, 'r': 0, 'other': 0}
+        self.make_daemon = daemon
+        self.is_daemon = False
+        self.pid_fpath = expand('~/.pid')
+        self.stdin = None
+        self.stdout = None
+        self.stderr = None
 
     def reconf(self):
         """If configfile has been updated, reconfigure accordingly"""
@@ -105,16 +113,16 @@ class Daemon(object):
         if config_time <= self.config_time:
             return
 
-        wstdout('Updated/new config detected; reconfiguring...\n')
+        wstderr('Updated/new config detected; reconfiguring...\n')
         self.config = ConfigParser()
         files_read = self.config.read(self.configfile)
         if not files_read:
-            wstdout('Config file "%s" could not be read... ' % self.configfile)
+            wstderr('Config file "%s" could not be read... ' % self.configfile)
             if self.configured:
-                wstdout('Returning to normal operation using previously-read'
+                wstderr('Returning to normal operation using previously-read'
                         ' config.\n')
             else:
-                wstdout('No configuration exists; exiting.\n')
+                wstderr('No configuration exists; exiting.\n')
                 sys.exit(1)
 
         self.users = self.config.get('Users', 'list').split(',')
@@ -125,6 +133,17 @@ class Daemon(object):
             )
 
         self.group = self.config.get('Users', 'group')
+        self.gid = None
+        try:
+            self.gid = get_gid(self.group)
+        except OSError:
+            pass
+        if self.gid is not None:
+            try:
+                setgid(self.gid)
+            except OSError:
+                pass
+
         for key, _ in self.config.items('Directories'):
             self.setup_dir(key)
         self.n_run = int(self.config.get('Queue', 'n_run'))
@@ -140,9 +159,9 @@ class Daemon(object):
 
         if self.config.has_section('Commands'):
             commands = self.config.items('Commands')
-            wstdout('Found [Commands] section, with following commands:\n')
+            wstderr('Found [Commands] section, with following commands:\n')
             for command in commands:
-                wstdout('> %s = "%s"\n' % command) # DEBUG
+                wstderr('> %s = "%s"\n' % command) # DEBUG
                 if command[0] == 'upgrade':
                     arg = command[1].lower()
                     if arg in ['auto', 'force']:
@@ -151,7 +170,7 @@ class Daemon(object):
                         self.upgrade_kind = None
                 elif command[0] == 'shutdown':
                     if command[1].lower() == 'true':
-                        wstdout('Shutdown command issued.\n')
+                        wstderr('Shutdown command issued.\n')
                         sys.exit(0)
 
         self.config_time = config_time
@@ -169,12 +188,12 @@ class Daemon(object):
             return
 
         if not FROZEN:
-            wstdout('Refusing to attempt to upgrade non-frozen application'
+            wstderr('Refusing to attempt to upgrade non-frozen application'
                     ' (i.e., this is a source-code distribution).\n')
             return
 
         if not isfile(self.distfile):
-            wstdout('Could not find distfile at path "%s"; not upgrading'
+            wstderr('Could not find distfile at path "%s"; not upgrading'
                     ' and resuming normal operation.\n' % self.distfile)
             return
 
@@ -182,49 +201,49 @@ class Daemon(object):
             try:
                 dist_mtime = getmtime(self.distfile)
             except OSError:
-                wstdout('Could not find distfile at path "%s"; not upgrading'
+                wstderr('Could not find distfile at path "%s"; not upgrading'
                         ' and resuming normal operation.\n' % self.distfile)
                 return
             if dist_mtime <= APPLICATION_MTIME:
-                wstdout('Distribution `daemon` "%s" not newer than current'
+                wstderr('Distribution `daemon` "%s" not newer than current'
                         ' running `daemon`; not upgrading.\n' % self.distfile)
                 return
-            wstdout('Found newer version of the software!\n')
+            wstderr('Found newer version of the software!\n')
 
         if APPLICATION_DIR == expand(dirname(self.distfile)):
-            wstdout('Application is running out of the dist dir: "%s"; cannot'
+            wstderr('Application is running out of the dist dir: "%s"; cannot'
                     ' upgrade, resuming normal operation!\n' % APPLICATION_DIR)
             return
 
-        wstdout('Attempting to upgrade the software...\n')
+        wstderr('Attempting to upgrade the software...\n')
 
-        wstdout('1. Backing up current version of software...\n')
+        wstderr('1. Backing up current version of software...\n')
 
         backupdir = APPLICATION_DIR + '.bak'
-        pid_file = expand('~/.pid')
-        backup_pid_file = expand('~/.pid.bak')
+        backup_pid_fpath = expand('~/.pid.bak')
 
         if ismount(backupdir):
             wstderr('Backup dir "%s" is a mount point; refusing to modify.\n'
                     % backupdir)
             wstderr('Cointinuing operation without upgrading!\n')
         elif isdir(backupdir):
-            wstdout('Backup dir "%s" already exists; removing.\n' % backupdir)
+            wstderr('Backup dir "%s" already exists; removing.\n' % backupdir)
             rmtree(backupdir)
         elif isfile(backupdir):
-            wstdout('Backup dir path "%s" is an existing file; removing.\n'
+            wstderr('Backup dir path "%s" is an existing file; removing.\n'
                     % backupdir)
             remove(backupdir)
 
         # Perform the actual backup of the current files
         copytree(APPLICATION_DIR, backupdir)
-        copy2(pid_file, backup_pid_file)
+        rename_or_move(self.pid_fpath, backup_pid_fpath)
+        set_path_metadata(backup_pid_fpath, group=self.group, perms=0o660)
 
-        wstdout('2. Running `deploy.sh` to get and launch new version...\n')
+        wstderr('2. Running `deploy.sh` to get and launch new version...\n')
         try:
             out = check_output(join(self.configdir, 'deploy.sh'))
         except CalledProcessError:
-            wstdout('> Failed to deploy new software. Reverting code and'
+            wstderr('> Failed to deploy new software. Reverting code and'
                     ' continuing to run.\n')
 
             # TODO/NOTE: the following fails due to e.g.:
@@ -233,15 +252,18 @@ class Daemon(object):
             remove_contents(APPLICATION_DIR)
 
             copy_contents(backupdir, APPLICATION_DIR)
-            copy2(backup_pid_file, pid_file)
+            copy2(backup_pid_fpath, self.pid_fpath)
             rmtree(backupdir)
-            remove(backup_pid_file)
+            remove(backup_pid_fpath)
         else:
-            wstdout('> Upgrade appears to have succeeded; output of'
+            wstderr('> Upgrade appears to have succeeded; output of'
                     ' deploy.sh:\n%s\n' % out)
-            wstdout('> Cleaning up and shutting down obsolete daemon...\n')
+            wstderr('> Cleaning up and shutting down obsolete daemon...\n')
             rmtree(backupdir)
-            remove(expand('~/.pid.bak'))
+            remove(backup_pid_fpath)
+            # Don't want to remove PID file since it's being used by another
+            # process now
+            self.pid_fpath = None
             sys.exit(0)
 
     def getpath(self, dir_kind, usr):
@@ -275,12 +297,21 @@ class Daemon(object):
             Directory path to be created
 
         """
-        mkdir(path, perms=0o770, group=self.group)
+        mkdir(path, perms=0o2770, group=self.group)
 
     def setup_dir(self, dir_kind):
         """Create dir of a particular kind"""
         path = self.getpath(dir_kind=dir_kind, usr=self.myusername)
         self.mkdir(path)
+
+    def cleanup(self):
+        """Cleanup open file descriptors and remove PID file"""
+        if self.pid_fpath is not None:
+            remove(self.pid_fpath)
+        for fobj in [self.stdin, self.stdout, self.stderr]:
+            if fobj is None:
+                continue
+            fobj.close()
 
     @property
     def full(self):
@@ -317,7 +348,7 @@ class Daemon(object):
         for usr in self.users:
             dirpath = self.getpath(dir_kind='job', usr=usr)
             if not isdir(dirpath):
-                wstdout('User "%s" does not have a job_dir setup.\n' % usr)
+                wstderr('User "%s" does not have a job_dir setup.\n' % usr)
                 continue
             jobs.extend(
                 (usr, f) for f in listdir(dirpath) if isfile(join(dirpath, f))
@@ -384,7 +415,7 @@ class Daemon(object):
 
         dest_filepath = submitted_filepath
         try:
-            wstdout('User %s submitting job %s created by %s\n'
+            wstderr('User %s submitting job %s created by %s\n'
                     % (self.myusername, job, usr))
 
             # TODO: figure out "-M <email>" option and place here... but might
@@ -416,13 +447,13 @@ class Daemon(object):
                 wstderr(err_msg + '\n')
                 with open(qsub_err_filepath, 'w') as fobj:
                     fobj.write(err_msg)
-                set_path_metadata(qsub_err_filepath)
+                set_path_metadata(qsub_err_filepath, group=self.group, perms=0o660)
                 return False
 
             # Write qsub message(s) to file (esp. what job_id got # assigned)
             with open(qsub_out_filepath, 'w') as fobj:
                 fobj.write(out)
-            set_path_metadata(qsub_out_filepath)
+            set_path_metadata(qsub_out_filepath, group=self.group, perms=0o660)
             return True
 
         finally:
@@ -435,18 +466,74 @@ class Daemon(object):
                 set_path_metadata(dest_filepath, group=self.group,
                                   perms=0o660)
 
+    def daemonize(self):
+        """See https://gist.github.com/josephernest/77fdb0012b72ebdf4c9d19d6256a1119"""
+        if self.is_daemon:
+            return
+
+        # First fork
+        try:
+            pid = fork()
+            if pid > 0:
+                # Exit first parent
+                sys.exit(0)
+        except OSError as err:
+            wstderr('fork #1 failed: %d (%s)\n' % (err.args[0], err.args[1]))
+            sys.exit(1)
+
+        # Decoubple from parent environment
+        setsid()
+        umask(0)
+
+        # Second fork
+        try:
+            pid = fork()
+            if pid > 0:
+                # Exit from second parent
+                sys.exit(0)
+        except OSError as err:
+            wstderr('Fork #2 failed: %d (%s)\n' % (err.args[0], err.args[1]))
+            sys.exit(1)
+
+        pid = getpid()
+        hostname = gethostname()
+        wstdout('%d\n' % pid)
+
+        sys.stdout.flush()
+        sys.stderr.flush()
+        self.stdin = file('/dev/null', 'r')
+        self.stdout = file('/dev/null', 'a+')
+        self.stderr = file('/dev/null', 'a+', 0)
+        dup2(self.stdin.fileno(), sys.stdin.fileno())
+        dup2(self.stdout.fileno(), sys.stdout.fileno())
+        dup2(self.stderr.fileno(), sys.stderr.fileno())
+
+        # Write PID and host to ~/.pid file
+        if self.pid_fpath is not None:
+            with open(self.pid_fpath, 'w+') as pid_file:
+                pid_file.write('%s\n%s\n' % (pid, hostname))
+            set_path_metadata(self.pid_fpath, group=self.group, perms=0o660)
+            atexit.register(self.cleanup)
+        signal.signal(signal.SIGTERM, lambda signum, stack_frame: exit())
+        self.is_daemon = True
+
     def serve_forever(self):
         """Main loop"""
+        if self.make_daemon:
+            self.daemonize()
+
+        with open(expand('~/delmexyzabc'), 'w') as testfile:
+            testfile.write('\n')
+
         while True:
             self.reconf()
             self.upgrade()
-
             if self.full:
-                wstdout('Queue is full.')
+                wstderr('Queue is full.')
             else:
                 self.do_some_work()
 
-            wstdout('going to sleep for %s seconds...\n' % self.sleep)
+            wstderr('going to sleep for %s seconds...\n' % self.sleep)
             sleep(self.sleep)
 
 
@@ -457,6 +544,10 @@ def parse_args(description=__doc__):
         '--config', type=str, default='~jll1062/openQ/config.ini',
         help='''Path to config file.'''
     )
+    parser.add_argument(
+        '--not-daemon', action='store_true',
+        help='''Do *not* deamonize process (i.e., run interactively).'''
+    )
     args = parser.parse_args()
     return args
 
@@ -464,7 +555,7 @@ def parse_args(description=__doc__):
 def main():
     """Main"""
     args = parse_args()
-    daemon = Daemon(configfile=args.config)
+    daemon = Daemon(configfile=args.config, daemon=(not args.not_daemon))
     daemon.serve_forever()
 
 

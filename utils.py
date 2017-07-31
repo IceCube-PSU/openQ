@@ -46,6 +46,31 @@ def rename_or_move(src, dest):
     except (IOError, OSError):
         move(src, dest)
 
+
+def get_gid(group):
+    """Get group ID (GID).
+
+    Parameters
+    ----------
+    group: string, int, or None
+
+    Returns
+    -------
+    gid : int
+
+    """
+    if isinstance(group, basestring):
+        gid = getgrnam(group).gr_gid
+    elif isinstance(group, int):
+        gid = group
+    else:
+        if group is not None:
+            raise TypeError('Illegal type for `group` ("%s"): %s'
+                            % (group, type(group)))
+        gid = group
+    return gid
+
+
 def set_path_metadata(path, perms=None, group=None, mtime=None):
     """Set permissions, group, and/or modification time (mtime) on a path.
 
@@ -67,13 +92,11 @@ def set_path_metadata(path, perms=None, group=None, mtime=None):
 
     """
     path = expand(path)
-
-    if isinstance(group, basestring):
-        gid = getgrnam(group).gr_gid
-    elif isinstance(group, int):
-        gid = group
-    else:
-        assert group is None
+    gid = None
+    try:
+        gid = get_gid(group)
+    except (KeyError, OSError):
+        pass
 
     # Set permissions
     if perms is not None:
@@ -83,7 +106,7 @@ def set_path_metadata(path, perms=None, group=None, mtime=None):
             pass
 
     # Change group owner (note that -1 keeps user the same)
-    if group is not None and stat(path).st_gid != gid:
+    if gid is not None and stat(path).st_gid != gid:
         try:
             chown(path, -1, gid)
         except (IOError, OSError) as err:
