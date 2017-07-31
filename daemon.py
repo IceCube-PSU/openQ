@@ -26,10 +26,10 @@ if __name__ == '__main__' and __package__ is None:
     os.sys.path.append(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     )
-from openQ import DEFAULT_CONFIG
-from openQ.qstat_base import QstatBase
-from openQ.utils import (copy_contents, expand, mkdir, remove_contents,
-                         rename_or_move, set_path_metadata, TZ_LOCAL, wstderr,
+from openQ import DEFAULT_CONFIG # pylint: disable=wrong-import-position
+from openQ.qstat_base import QstatBase # pylint: disable=wrong-import-position
+from openQ.utils import (copy_contents, expand, mkdir, remove_contents, # pylint: disable=wrong-import-position
+                         rename_or_move, set_path_metadata, timestamp, wstderr,
                          wstdout)
 
 
@@ -102,7 +102,7 @@ class Daemon(object):
         try:
             config_time = getmtime(self.configfile)
         except OSError, err:
-            if self.configured and err[0] == 2:
+            if self.configured and err.args[0] == 2:
                 wstderr('Could not find config "%s", returning to normal'
                         ' operation\n' % self.configfile)
                 return
@@ -234,7 +234,8 @@ class Daemon(object):
                     ' continuing to run.\n')
 
             # TODO/NOTE: the following fails due to e.g.:
-            # OSError: [Errno 16] Device or resource busy: '~/.dist/.nfs0000000000e2e11900000ea1'
+            # OSError: [Errno 16] Device or resource busy:
+            #     '~/.dist/.nfs0000000000e2e11900000ea1'
             # but we want to keep going in this case, so for now ignoring
             # OSError
             remove_contents(APPLICATION_DIR)
@@ -367,6 +368,7 @@ class Daemon(object):
         success : bool
 
         """
+        ts_now = timestamp(datetime.now())
         job_dir = self.getpath(dir_kind='job', usr=usr)
         tmp_dir = self.getpath(dir_kind='tmp', usr=usr)
         orig_job_filepath = join(job_dir, job)
@@ -383,11 +385,12 @@ class Daemon(object):
         submitted_dir = self.getpath(dir_kind='sub', usr=usr)
         submitted_filepath = join(submitted_dir, job)
 
-        qsub_info_dir = self.getpath(dir_kind='qsub_info', usr=usr)
-        suffix = '.qsub.%s.%s' % (self.myusername,
-                                  datetime.now(tz=TZ_LOCAL).isoformat())
-        qsub_err_filepath = join(qsub_info_dir, job + suffix + '.err')
-        qsub_out_filepath = join(qsub_info_dir, job + suffix + '.out')
+        # TODO: uncomment when we get actual stderr from command
+        #qsub_info_dir = self.getpath(dir_kind='qsub_info', usr=usr)
+        #suffix = '.qsub.%s.%s' % (self.myusername, ts_now)
+        #qsub_err_filepath = join(qsub_info_dir, job + suffix + '.err')
+        # TODO: remove altogether?
+        #qsub_out_filepath = join(qsub_info_dir, job + suffix + '.out')
 
         dest_filepath = submitted_filepath
         try:
@@ -403,6 +406,7 @@ class Daemon(object):
             mail_options = '-m p'
             qsub_command = 'qsub %s -A open' % mail_options
             out = None
+            # TODO: get stderr if command fails; then write to file
             try:
                 out = check_output(qsub_command.split() + [tmp_job_filepath],
                                    stderr=STDOUT)
@@ -421,15 +425,19 @@ class Daemon(object):
                         + '\n'.join('> %s\n' % l for l in out.split('\n'))
                     )
                 wstderr(err_msg + '\n')
-                with open(qsub_err_filepath, 'w') as fobj:
-                    fobj.write(err_msg)
-                set_path_metadata(qsub_err_filepath)
+                # TODO uncomment when we can get stderr properly above
+                #with open(qsub_err_filepath, 'w') as fobj:
+                #    fobj.write(err_msg)
+                #set_path_metadata(qsub_err_filepath, group=self.group,
+                #                  perms=0o660)
                 return False
 
-            # Write qsub message(s) to file (esp. what job_id got # assigned)
-            with open(qsub_out_filepath, 'w') as fobj:
-                fobj.write(out)
-            set_path_metadata(qsub_out_filepath)
+            # TODO remove this altogether? No need to see stdout if it succeeds
+            ## Write qsub message(s) to file (esp. what job_id got # assigned)
+            #with open(qsub_out_filepath, 'w') as fobj:
+            #    fobj.write(out)
+            #set_path_metadata(qsub_out_filepath, group=self.group,
+            #                  perms=0o660)
             return True
 
         finally:

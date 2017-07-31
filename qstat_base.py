@@ -27,11 +27,11 @@ if __name__ == '__main__' and __package__ is None:
     os.sys.path.append(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     )
-from openQ import ACI_QUEUES
-from openQ.utils import (expand, get_xml_subnode, get_xml_val,
-                         hhmmss_to_timedelta, mkdir, to_bool, to_int,
+from openQ import ACI_QUEUES # pylint: disable=wrong-import-position
+from openQ.utils import (expand, get_xml_subnode, get_xml_val, # pylint: disable=wrong-import-position
+                         ddhhmmss_to_timedelta, mkdir, to_bool, to_int,
                          sec_since_epoch_to_datetime, set_path_metadata,
-                         to_bytes_size)
+                         to_bytes_size, wstderr)
 
 
 __all__ = ['ARRAY_RE', 'MAX_ATTEMPTS', 'QstatBase']
@@ -88,10 +88,25 @@ class QstatBase(object):
         if self.cache_dir is not None:
             if isinstance(group, int):
                 self.gid = group
-                self.group = getgrgid(self.gid).gr_name
+                self.group = None
+                try:
+                    self.group = getgrgid(self.gid).gr_name
+                except KeyError:
+                    #wstderr('WARNING: could not find GID %d; cannot set group'
+                    #        ' ownership on generated files and directories.\n'
+                    #        % self.gid)
+                    self.gid = None
+                    self.group = None
             elif isinstance(group, basestring):
                 self.group = group
-                self.gid = getgrnam(self.group).gr_gid
+                try:
+                    self.gid = getgrnam(self.group).gr_gid
+                except KeyError:
+                    #wstderr('WARNING: could not find group name %s; cannot set'
+                    #        ' group ownership on generated files and'
+                    #        ' directories.\n' % self.group)
+                    self.gid = None
+                    self.group = None
             else:
                 assert group is None, str(group)
         self._xml = None
@@ -123,7 +138,7 @@ class QstatBase(object):
                 'jobs_df.%s.pkl.gz' % self.username
             )
 
-        if not isdir(self.cache_dir):
+        if self.cache_dir is not None and not isdir(self.cache_dir):
             mkdir(self.cache_dir, perms=0o770, group=self.gid)
 
     def set_path_metadata(self, fpath, mtime=None):
@@ -142,11 +157,10 @@ class QstatBase(object):
 
         """
         perms = None
-        if self.group is not None:
-            if isdir(fpath):
-                perms = 0o770
-            elif isfile(fpath):
-                perms = 0o660
+        if isdir(fpath):
+            perms = 0o770
+        elif isfile(fpath):
+            perms = 0o660
         set_path_metadata(path=fpath, perms=perms, group=self.group,
                           mtime=mtime)
 
@@ -279,6 +293,10 @@ class QstatBase(object):
 
         # Otherwise, run qstat again, if this is possible (qstat only returns
         # info for myusername)
+        if self.username != self.myusername:
+            raise ValueError('Cannot run `qstat` for any user besides %s, but'
+                             ' requested qstat info for user %s.'
+                             % (self.myusername, self.username))
         self._xml = check_output(['qstat', '-x'])
         self._xml_mtime = time()
 
@@ -412,7 +430,7 @@ class QstatBase(object):
 
             for key in ['walltime']:
                 if rec[key] is not None:
-                    rec[key] = hhmmss_to_timedelta(rec[key])
+                    rec[key] = ddhhmmss_to_timedelta(rec[key])
 
             # TODO: 'comp_time' looks like sec since epoch, e.g., 1501000391,
             # but not sure what comp_time means...
@@ -442,7 +460,7 @@ class QstatBase(object):
                     if 'mem' in res_name:
                         res_val = to_bytes_size(res_val)
                     elif 'time' in res_name or res_name == 'cput':
-                        res_val = hhmmss_to_timedelta(res_val)
+                        res_val = ddhhmmss_to_timedelta(res_val)
                     elif res_name == 'energy_used':
                         continue
                     rec['used_' + res_name] = res_val
@@ -455,7 +473,7 @@ class QstatBase(object):
                     if 'mem' in res_name:
                         res_val = to_bytes_size(res_val)
                     elif 'time' in res_name or res_name in ['cput']:
-                        res_val = hhmmss_to_timedelta(res_val)
+                        res_val = ddhhmmss_to_timedelta(res_val)
                     elif res_name == 'nodes':
                         fields = res_val.split(':')
                         rec['req_nodes'] = int(fields[0])
