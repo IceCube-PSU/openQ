@@ -584,6 +584,9 @@ class Daemon(object):
 
     def serve_forever(self):
         """Main loop"""
+        self.reconf()
+        self.upgrade()
+
         if self.make_daemon:
             self.daemonize()
 
@@ -591,8 +594,6 @@ class Daemon(object):
             testfile.write('\n')
 
         while True:
-            self.reconf()
-            self.upgrade()
             if self.full:
                 wstderr('Queue is full.')
             else:
@@ -600,6 +601,9 @@ class Daemon(object):
 
             wstderr('going to sleep for %s seconds...\n' % self.sleep)
             sleep(self.sleep)
+
+            self.reconf()
+            self.upgrade()
 
 
 def parse_args(description=__doc__):
