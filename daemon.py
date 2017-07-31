@@ -13,7 +13,7 @@ import atexit
 from ConfigParser import ConfigParser
 from datetime import datetime
 from getpass import getuser
-from os import dup2, fork, getpid, listdir, remove, setgid, setsid, umask
+from os import dup2, fork, getpid, kill, listdir, remove, setgid, setsid, umask
 from os.path import dirname, getmtime, join, isdir, isfile, ismount
 from random import randint
 from shutil import copy2, copytree, rmtree
@@ -97,6 +97,8 @@ class Daemon(object):
         self.stdin = None
         self.stdout = None
         self.stderr = None
+        self.pid = getpid()
+        self.hostname = gethostname()
 
     def reconf(self):
         """If configfile has been updated, reconfigure accordingly"""
@@ -138,11 +140,7 @@ class Daemon(object):
             self.gid = get_gid(self.group)
         except OSError:
             pass
-        if self.gid is not None:
-            try:
-                setgid(self.gid)
-            except OSError:
-                pass
+        self.set_my_umask_gid()
 
         for key, _ in self.config.items('Directories'):
             self.setup_dir(key)
@@ -309,9 +307,8 @@ class Daemon(object):
         if self.pid_fpath is not None:
             remove(self.pid_fpath)
         for fobj in [self.stdin, self.stdout, self.stderr]:
-            if fobj is None:
-                continue
-            fobj.close()
+            if fobj is not None:
+                fobj.close()
 
     @property
     def full(self):
@@ -466,10 +463,63 @@ class Daemon(object):
                 set_path_metadata(dest_filepath, group=self.group,
                                   perms=0o660)
 
+    def kill_existing_daemon(self):
+        """If an existing daemon is found on the same host, attempt to kill it.
+
+        Raises
+        ------
+        OSError
+            If existing process exists but cannot be killed.
+
+        """
+        if self.pid_fpath is None or not isfile(self.pid_fpath):
+            return
+
+        with open(self.pid_fpath, 'r') as fobj:
+            lines = fobj.readlines()
+        pid_in_file = int(lines[-2].strip())
+        host_in_file = lines[-1].strip()
+
+        if host_in_file == self.hostname:
+            wstderr('Attempting to kill process %d on host %s... '
+                    % (pid_in_file, host_in_file))
+            try:
+                kill(pid_in_file, signal.SIGKILL)
+            except OSError as err:
+                if err.args[0] == 3:
+                    wstderr('[SUCCESS] (Process did not exist.)\n')
+                    remove(self.pid_fpath)
+                    return
+                wstderr('[FAILURE] (Could not kill process with SIGTERM.)\n')
+                raise
+            else:
+                wstderr('[SUCCESS] (Process killed with SIGTERM.)\n')
+                remove(self.pid_fpath)
+                return
+
+        raise OSError(
+            'PID file already exists at "%s"! Kill possible existing'
+            ' daemon with PID %d on host %s (attempt with kill before'
+            ' kill -9). If process is already dead, remove the PID file'
+            ' and then attempt to run & daemonize again.'
+            % (self.pid_fpath, pid_in_file, host_in_file)
+        )
+
+    def set_my_umask_gid(self):
+        """Set umask and--if one is defined--group ID (GID)"""
+        umask(0)
+        if self.gid is not None:
+            try:
+                setgid(self.gid)
+            except OSError:
+                pass
+
     def daemonize(self):
         """See https://gist.github.com/josephernest/77fdb0012b72ebdf4c9d19d6256a1119"""
         if self.is_daemon:
             return
+
+        self.kill_existing_daemon()
 
         # First fork
         try:
@@ -481,9 +531,9 @@ class Daemon(object):
             wstderr('fork #1 failed: %d (%s)\n' % (err.args[0], err.args[1]))
             sys.exit(1)
 
-        # Decoubple from parent environment
+        # Decouple from parent environment
         setsid()
-        umask(0)
+        self.set_my_umask_gid()
 
         # Second fork
         try:
@@ -495,9 +545,11 @@ class Daemon(object):
             wstderr('Fork #2 failed: %d (%s)\n' % (err.args[0], err.args[1]))
             sys.exit(1)
 
-        pid = getpid()
-        hostname = gethostname()
-        wstdout('%d\n' % pid)
+        self.set_my_umask_gid()
+
+        self.pid = getpid()
+        wstdout('%d\n' % self.pid)
+        self.is_daemon = True
 
         sys.stdout.flush()
         sys.stderr.flush()
@@ -508,14 +560,15 @@ class Daemon(object):
         dup2(self.stdout.fileno(), sys.stdout.fileno())
         dup2(self.stderr.fileno(), sys.stderr.fileno())
 
+        atexit.register(self.cleanup)
+        signal.signal(signal.SIGTERM, lambda signum, stack_frame: exit())
+
         # Write PID and host to ~/.pid file
         if self.pid_fpath is not None:
             with open(self.pid_fpath, 'w+') as pid_file:
-                pid_file.write('%s\n%s\n' % (pid, hostname))
+                pid_file.write('%s\n%s\n' % (self.pid, self.hostname))
             set_path_metadata(self.pid_fpath, group=self.group, perms=0o660)
-            atexit.register(self.cleanup)
-        signal.signal(signal.SIGTERM, lambda signum, stack_frame: exit())
-        self.is_daemon = True
+
 
     def serve_forever(self):
         """Main loop"""
