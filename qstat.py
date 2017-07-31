@@ -13,14 +13,13 @@ from collections import OrderedDict
 from ConfigParser import ConfigParser
 from getpass import getuser
 import os
+from os.path import abspath, dirname
 from os.path import isfile
 
 import pandas as pd
 
 if __name__ == '__main__' and __package__ is None:
-    os.sys.path.append(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    )
+    os.sys.path.append(dirname(dirname(abspath(__file__))))
 from openQ import DEFAULT_CONFIG # pylint: disable=wrong-import-position
 from openQ.qstat_base import QstatBase # pylint: disable=wrong-import-position
 from openQ.utils import expand, wstdout # pylint: disable=wrong-import-position

@@ -17,21 +17,19 @@ from grp import getgrgid, getgrnam
 from gzip import GzipFile
 from numbers import Number
 import os
-from os.path import getmtime, join, isdir, isfile
+from os.path import abspath, dirname, getmtime, join, isdir, isfile
 import re
 from subprocess import check_output
 from time import sleep, time
 from xml.etree import ElementTree
 
 if __name__ == '__main__' and __package__ is None:
-    os.sys.path.append(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    )
+    os.sys.path.append(dirname(dirname(abspath(__file__))))
 from openQ import ACI_QUEUES # pylint: disable=wrong-import-position
 from openQ.utils import (expand, get_xml_subnode, get_xml_val, # pylint: disable=wrong-import-position
                          ddhhmmss_to_timedelta, mkdir, to_bool, to_int,
                          sec_since_epoch_to_datetime, set_path_metadata,
-                         to_bytes_size, wstderr)
+                         to_bytes_size)
 
 
 __all__ = ['ARRAY_RE', 'MAX_ATTEMPTS', 'QstatBase']
