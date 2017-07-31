@@ -569,7 +569,6 @@ class Daemon(object):
                 pid_file.write('%s\n%s\n' % (self.pid, self.hostname))
             set_path_metadata(self.pid_fpath, group=self.group, perms=0o660)
 
-
     def serve_forever(self):
         """Main loop"""
         if self.make_daemon:
