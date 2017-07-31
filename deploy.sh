@@ -44,15 +44,21 @@ if [ -f "$PIDFILE" ]
 then
 	PID=$( tail -2 "$PIDFILE" 2>/dev/null | head -1 2>/dev/null )
 	HNAME=$( tail -1 "$PIDFILE" 2>/dev/null )
-	if kill -0 $PID && [ "$HNAME" == hostname ]
+	if [ "$HNAME" == $( hostname ) ]
 	then
 		kill $PID
+		if [ -n $( kill -0 $PID >/dev/null 2>&1 ) ]
+		then
+			rm -f "$PIDFILE"
+		fi
 	fi
 
-	echo "WARNING! Check for an existing daemon running with PID / hostname:"
-	cat "$PIDFILE"
-	echo "... Removing the old PID file and proceeding with deployment"
-	rm -f "$PIDFILE"
+	if [ -f "$PIDFILE" ]
+	then
+		echo "ERROR! Check for an existing daemon running with PID / hostname:"
+		cat "$PIDFILE"
+		exit 1
+	fi
 fi
 
 export PATH=$DEST_DISTDIR:"$PATH"
@@ -100,7 +106,7 @@ fi
 # (or at least should be...)
 PID=$( tail -2 "$PIDFILE" 2>/dev/null | head -1 2>/dev/null )
 HNAME=$( tail -1 "$PIDFILE" 2>/dev/null )
-if kill -0 "$PID" >/dev/null 2>&1 && [ "$HNAME" == "$HOSTNAME" ]
+if kill -0 "$PID" >/dev/null 2>&1 && [ "$HNAME" == "$( hostname )" ]
 then
 	echo "SUCCESS: openQ daemon has been deployed successfully."
 	echo "Host name: $HNAME,  proc name: \"$pname\", PID: $PID"
