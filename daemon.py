@@ -77,12 +77,6 @@ NO_CONFIG_SHUTDOWN_SEC = 3600
 #        print ("Skipping {}".format(i))
 
 
-def sig_handler(signum, frame):
-    """Handle signals"""
-    wstderr(str(frame))
-    sys.exit(signum)
-
-
 class Daemon(object):
     """
     Queue daemon
@@ -93,6 +87,7 @@ class Daemon(object):
 
     """
     def __init__(self, configfile, daemon=True, logfile=None):
+        self.cleaned = False
         self.myusername = getuser()
         if logfile is not None:
             logfile = expand(logfile)
@@ -339,11 +334,22 @@ class Daemon(object):
 
     def cleanup(self):
         """Cleanup open file descriptors and remove PID file"""
+        if self.cleaned:
+            return
+        wstderr('Cleaning up open file descriptors and removing PID file at'
+                ' "%s"\n' % self.pid_fpath)
         if self.pid_fpath is not None:
             remove(self.pid_fpath)
         for fobj in [self.stdin, self.stdout, self.stderr]:
             if fobj is not None:
                 fobj.close()
+        self.cleaned = True
+
+    def sig_handler(self, signum, frame):
+        """Handle signals"""
+        wstderr('Received signal %d\n' % signum)
+        self.cleanup()
+        sys.exit(signum) #sys.exit(signum)
 
     @property
     def full(self):
@@ -526,7 +532,7 @@ class Daemon(object):
             return
 
         if host_in_file == self.hostname:
-            wstderr('Attempting to kill process %d on host %s... '
+            wstderr('Attempting to kill process %d on host %s ... '
                     % (pid_in_file, host_in_file))
             try:
                 kill(pid_in_file, signal.SIGKILL)
@@ -605,19 +611,28 @@ class Daemon(object):
         wstdout('%d\n' % self.pid)
         self.is_daemon = True
 
+        # Redirect IO from terminal to either a file or /dev/null (the latter
+        # for a proper daemon)
         sys.stdout.flush()
         sys.stderr.flush()
         self.stdin = file('/dev/null', 'r')
-        self.stdout = file('/dev/null', 'a+')
-        self.stderr = file('/dev/null', 'a+', 0)
+        if self.logfile is not None:
+            log_fpath = self.logfile
+            self.stdout = file(log_fpath, 'w+')
+            self.stderr = file(log_fpath, 'w+', 0)
+            set_path_metadata(self.logfile, group=self.group, perms=0o660)
+        else:
+            log_fpath = '/dev/null'
+            self.stdout = file(log_fpath, 'a+')
+            self.stderr = file(log_fpath, 'a+', 0)
         dup2(self.stdin.fileno(), sys.stdin.fileno())
         dup2(self.stdout.fileno(), sys.stdout.fileno())
         dup2(self.stderr.fileno(), sys.stderr.fileno())
 
-        atexit.register(self.cleanup)
-        for sig in [signal.SIGTERM, signal.SIGHUP, signal.SIGINT,
-                    signal.SIGKILL]:
-            signal.signal(sig, sig_handler)
+        # Signal handling
+        #atexit.register(self.cleanup)
+        for sig in [signal.SIGTERM, signal.SIGHUP, signal.SIGINT]:
+            signal.signal(sig, self.sig_handler)
 
         self.record_pid()
 
