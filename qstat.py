@@ -109,9 +109,12 @@ class Qstat(QstatBase):
             jobs_df['req_qos'] = jobs_df['req_qos'].astype('category')
         if 'exec_host' in jobs_df:
             jobs_df['exec_host'] = jobs_df['exec_host'].astype('category')
+        #for key in ['comp_time', 'total_runtime', 'walltime']:
+        #    if key in jobs_df:
+        #        jobs_df[key] = jobs_df['exec_host'].astype('category')
 
         # Auto-convert dtypes for the remaining columns
-        convert_df_dtypes(jobs_df)
+        #convert_df_dtypes(jobs_df)
 
         return jobs_df
 
