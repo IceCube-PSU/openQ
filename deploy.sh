@@ -40,6 +40,7 @@ pname="${name[$rand]}"
 
 mv $DEST_DISTDIR/daemon $DEST_DISTDIR/$pname
 chgrp -R $GROUP $DEST_DISTDIR
+chmod -R g=u $DEST_DISTDIR
 chmod 2770 $DEST_DISTDIR/$pname
 
 # Remove old PID file
