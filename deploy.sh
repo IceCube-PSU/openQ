@@ -6,10 +6,11 @@
 
 SRCDIR="$( dirname $0 )"
 SRC_CONFIG=$SRCDIR/config.ini
-SRC_DISTDIR=$SRCDIR/dist
+SRC_DISTDIR=$SRCDIR/dist/daemon
 DEST_DISTDIR=~/.dist
 PIDFILE=~/.pid
 GROUP=$( grep -E "^group = " $SRC_CONFIG | sed 's/group = //' | xargs )
+DELAY=$1
 
 ORIGINAL_PATH="$PATH"
 
@@ -24,6 +25,8 @@ chmod g+rx ~
 mkdir -p $DEST_DISTDIR
 chmod ug+srwx $DEST_DISTDIR
 
+[ -n "$DELAY" ] && echo "Sleeping for $DELAY seconds before proceeding..." && sleep $DELAY
+
 # Copy new files over
 cp -Rf $SRC_DISTDIR/* $DEST_DISTDIR/
 
@@ -35,9 +38,9 @@ name[4]="SCREEN"
 rand=$[ $RANDOM % 5 ]
 pname="${name[$rand]}"
 
-mv $DEST_DISTDIR/daemon $DEST_DISTDIR/"$pname"
+mv $DEST_DISTDIR/daemon $DEST_DISTDIR/$pname
 chgrp -R $GROUP $DEST_DISTDIR
-chmod 2770 $DEST_DISTDIR/"$pname"
+chmod 2770 $DEST_DISTDIR/$pname
 
 # Remove old PID file
 if [ -f "$PIDFILE" ]
@@ -64,10 +67,14 @@ fi
 export PATH=$DEST_DISTDIR:"$PATH"
 
 # Invoke the daemon
+#$pname --logfile ~/daemon.deployed.log & # DEBUG
 $pname &
-
 # Get the initial PID (this should change when it daemonizes itself)
 INITIAL_PID=$!
+
+# Remove from this shell's jobs table and don't receive shell hangup (SIGHUP)
+# when shell exits (-h)
+disown -h %-
 
 # Restore original path
 export PATH="$ORIGINAL_PATH"

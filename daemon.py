@@ -9,7 +9,7 @@ Submit job files located in a directory to ACI open queue.
 from __future__ import absolute_import
 
 from argparse import ArgumentParser
-import atexit
+#import atexit
 from ConfigParser import ConfigParser
 #from datetime import datetime
 from getpass import getuser
@@ -21,7 +21,7 @@ from random import randint
 from shutil import copy2, copytree, rmtree
 import signal
 from socket import gethostname
-from subprocess import CalledProcessError, check_output, STDOUT
+from subprocess import CalledProcessError, check_output, Popen, STDOUT
 import sys
 from time import sleep, time
 
@@ -34,19 +34,25 @@ from openQ.utils import (copy_contents, expand, get_gid, mkdir, # pylint: disabl
                          wstderr, wstdout)
 
 
-__all__ = ['APPLICATION_PATH', 'APPLICATION_DIR', 'APPLICATION_MTIME',
-           'SIGNAL_MAP', 'RESPAWN_DELAY_SEC', 'Daemon', 'parse_args', 'main']
+__all__ = ['FROZEN', 'APPLICATION_PATH', 'APPLICATION_DIR',
+           'APPLICATION_MTIME', 'SIGNAL_MAP', 'RESPAWN_DELAY_SEC',
+           'NO_CONFIG_SHUTDOWN_SEC', 'Daemon', 'parse_args', 'main']
 
+
+FROZEN = False
+APPLICATION_PATH = None
+APPLICATION_DIR = None
+APPLICATION_MTIME = float('inf')
 
 if getattr(sys, 'frozen', False):
     APPLICATION_PATH = expand(sys.executable)
     FROZEN = True
 elif __file__:
     APPLICATION_PATH = expand(__file__)
-    FROZEN = False
 
-APPLICATION_DIR = dirname(expand(APPLICATION_PATH))
-APPLICATION_MTIME = getmtime(APPLICATION_PATH)
+if APPLICATION_PATH:
+    APPLICATION_DIR = dirname(expand(APPLICATION_PATH))
+    APPLICATION_MTIME = getmtime(APPLICATION_PATH)
 
 SIGNAL_MAP = {
     k: v for v, k in reversed(sorted(signal.__dict__.items()))
@@ -57,25 +63,6 @@ SIGNAL_MAP = {
 RESPAWN_DELAY_SEC = 60
 NO_CONFIG_SHUTDOWN_SEC = 3600
 """Shutdown if a config file is not found after this long"""
-
-
-# TODO: get signal handling / respawning working.
-#def sighandler(signum, frame):
-#    signame = SIGNAL_MAP[signum]
-#    wstderr('Received signum %d (%s); relaunching daemon.\n'
-#            % (signum, signame))
-#    out = check_output(join(self.config_dir, 'deploy.sh'))
-#
-#
-#for sigkey in dir(signal):
-#    if not sigkey.startswith('SIG'):
-#        continue
-#    try:
-#        _signum = getattr(signal, sigkey)
-#        signal.signal(_signum, sighandler)
-#    except (OSError, RuntimeError) as m: # OSError->Py3, RuntimeError->Py2
-#        print ("Skipping {}".format(i))
-
 
 class Daemon(object):
     """
@@ -101,7 +88,7 @@ class Daemon(object):
         self.config_last_seen = 0
 
         self.upgrade_kind = None
-        self.distfile = join(self.config_dir, 'dist', 'daemon')
+        self.distfile = join(self.config_dir, 'dist', 'daemon', 'daemon')
         """File to use when upgrading"""
 
         self.queue_status = {'q': 0, 'r': 0, 'other': 0}
@@ -126,7 +113,7 @@ class Daemon(object):
                 dt_sec = time() - self.config_last_seen
                 if dt_sec > NO_CONFIG_SHUTDOWN_SEC:
                     wstderr('No config file seen in at least %d sec. Shutting'
-                            ' down.' % dt_sec)
+                            ' down.\n' % dt_sec)
                     sys.exit(1)
                 wstderr('Could not find config "%s", returning to normal'
                         ' operation\n' % self.config_fpath)
@@ -228,8 +215,8 @@ class Daemon(object):
                         ' and resuming normal operation.\n' % self.distfile)
                 return
             if dist_mtime <= APPLICATION_MTIME:
-                wstderr('Distribution `daemon` "%s" not newer than current'
-                        ' running `daemon`; not upgrading.\n' % self.distfile)
+                #wstderr('Distribution `daemon` "%s" not newer than current'
+                #        ' running `daemon`; not upgrading.\n' % self.distfile)
                 return
             wstderr('Found newer version of the software!\n')
 
@@ -345,11 +332,16 @@ class Daemon(object):
                 fobj.close()
         self.cleaned = True
 
-    def sig_handler(self, signum, frame):
+    def sig_handler(self, signum, frame): # pylint: disable=unused-argument
         """Handle signals"""
-        wstderr('Received signal %d\n' % signum)
+        signame = SIGNAL_MAP[signum]
+        wstderr('Received signal %d (%s)\n' % (signum, signame))
         self.cleanup()
-        sys.exit(signum) #sys.exit(signum)
+        if signame in ['SIGTERM', 'SIGKILL']:
+            Popen(['nohup',
+                   join(self.config_dir, 'deploy.sh'),
+                   str(RESPAWN_DELAY_SEC)])
+        sys.exit(signum)
 
     @property
     def full(self):
@@ -578,7 +570,7 @@ class Daemon(object):
         if self.is_daemon:
             return
 
-        self.kill_existing_daemon()
+        #self.kill_existing_daemon()
 
         # First fork
         try:
@@ -591,6 +583,8 @@ class Daemon(object):
             sys.exit(1)
 
         # Decouple from parent environment
+        # NOTE: changing to different dir might mess with pyinstaller...
+        # need to make sure that "path" still thinks it lives elsewhere...
         chdir('/')
         setsid()
         self.set_my_umask_gid()
@@ -605,6 +599,7 @@ class Daemon(object):
             wstderr('Fork #2 failed: %d (%s)\n' % (err.args[0], err.args[1]))
             sys.exit(1)
 
+        chdir('/')
         self.set_my_umask_gid()
 
         self.pid = getpid()
@@ -615,16 +610,16 @@ class Daemon(object):
         # for a proper daemon)
         sys.stdout.flush()
         sys.stderr.flush()
-        self.stdin = file('/dev/null', 'r')
+        self.stdin = open(name='/dev/null', mode='r')
         if self.logfile is not None:
             log_fpath = self.logfile
-            self.stdout = file(log_fpath, 'w+')
-            self.stderr = file(log_fpath, 'w+', 0)
+            self.stdout = open(name=log_fpath, mode='w')
+            self.stderr = open(name=log_fpath, mode='w', buffering=0)
             set_path_metadata(self.logfile, group=self.group, perms=0o660)
         else:
             log_fpath = '/dev/null'
-            self.stdout = file(log_fpath, 'a+')
-            self.stderr = file(log_fpath, 'a+', 0)
+            self.stdout = open(name=log_fpath, mode='a+')
+            self.stderr = open(name=log_fpath, mode='a+', buffering=0)
         dup2(self.stdin.fileno(), sys.stdin.fileno())
         dup2(self.stdout.fileno(), sys.stdout.fileno())
         dup2(self.stderr.fileno(), sys.stderr.fileno())
@@ -639,7 +634,7 @@ class Daemon(object):
     def record_pid(self):
         """Write PID and host to ~/.pid file"""
         if self.pid_fpath is not None:
-            with open(self.pid_fpath, 'w+') as pid_file:
+            with open(self.pid_fpath, 'w') as pid_file:
                 pid_file.write('%s\n%s\n' % (self.pid, self.hostname))
             set_path_metadata(self.pid_fpath, group=self.group, perms=0o660)
 
@@ -653,10 +648,6 @@ class Daemon(object):
 
         if self.make_daemon:
             self.daemonize()
-
-        # DEBUG
-        #with open(expand('~/PBS/delmexyzabc'), 'w') as testfile:
-        #    testfile.write('\n')
 
         while True:
             try:
