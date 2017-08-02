@@ -4,7 +4,8 @@
 # TODO: use --config option to daemon but without showing up on command line...?
 
 
-SRCDIR="$( dirname $0 )"
+SRCDIR="$( readlink $( dirname $0 ) )"
+echo $SRCDIR
 SRC_CONFIG=$SRCDIR/config.ini
 SRC_DISTDIR=$SRCDIR/dist/daemon
 DEST_DISTDIR=~/.dist
@@ -58,18 +59,23 @@ then
 	fi
 
 	if [ -f "$PIDFILE" ]
-	then
-		echo "ERROR! Check for an existing daemon running with PID / hostname:"
-		cat "$PIDFILE"
-		exit 1
+    then
+        if [ -z "$PID" -o -z "$HNAME" ]
+        then
+            rm -f "$PIDFILE"
+        else
+		    echo "ERROR! Check for an existing daemon running with PID / hostname:"
+		    cat "$PIDFILE"
+		    exit 1
+        fi
 	fi
 fi
 
 export PATH=$DEST_DISTDIR:"$PATH"
 
 # Invoke the daemon
-#$pname --logfile ~/daemon.deployed.log & # DEBUG
-$pname &
+$pname --logfile ~/daemon.deployed.log & # DEBUG
+#$pname &
 # Get the initial PID (this should change when it daemonizes itself)
 INITIAL_PID=$!
 

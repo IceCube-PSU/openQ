@@ -290,7 +290,7 @@ def main(config, cache_dir=None, stale_sec=float('inf'), users=None,
             stale_sec = 'inf'
         qstat = Qstat(stale_sec=float(stale_sec), username=username,
                       cache_dir=cache_dir, group=group)
-        wstdout(qstat.single_user_summary())
+        wstdout(qstat.single_user_summary() + '\n')
         return qstat.jobs_df
 
     jobs_dfs = []

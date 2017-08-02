@@ -5,14 +5,41 @@
 #PBS -j oe
 #PBS -o /dev/null
 #PBS -N run_@@RUN@@
+#PBS -W umask=000
+
+# All generated files will be user and group read- and writeable, and
+# executable if appropriate. "Other" users have no permissions.
+#umask 007
 
 cd $PBS_O_WORKDIR
 
-echo 'Hello' > @@OUTDIR@@/run_@@RUN@@.json
-sleep 100
-echo 'i slept 100 secs' > @@LOGDIR@@/run_@@RUN@@.log
+OUTFILE=@@OUTDIR@@/run_@@RUN@@.txt
+LOGFILE=@@LOGDIR@@/run_@@RUN@@.log
 
-chgrp dfc13_collab @@OUTDIR@@/run_@@RUN@@.json
-chmod g+rw @@OUTDIR@@/run_@@RUN@@.json
-chgrp dfc13_collab @@LOGDIR@@/run_@@RUN@@.log
-chmod g+rw @@LOGDIR@@/run_@@RUN@@.log
+# Create empty files (or overwrite existing file(s))
+printf '' > $OUTFILE
+printf '' > $LOGFILE
+
+# Immediately set ownership / permissions on files before doing anything else
+chgrp dfc13_collab $OUTFILE $LOGFILE
+chmod g+rw $OUTFILE $LOGFILE
+
+# Write some useful info to the outfile
+echo "Hello from hostname `hostname`" >> $OUTFILE
+
+echo "" >> $OUTFILE
+
+echo "cpuinfo" >> $OUTFILE
+echo "-------" >> $OUTFILE
+cpuinfo >> $OUTFILE
+
+echo "" >> $OUTFILE
+
+echo "PBS env vars" >> $OUTFILE
+echo "------------" >> $OUTFILE
+env | grep -E "^PBS" >> $OUTFILE
+
+echo "" >> $OUTFILE
+
+sleep 100
+echo "I slept 100 seconds" >> $LOGFILE

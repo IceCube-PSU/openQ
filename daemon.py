@@ -24,6 +24,7 @@ from socket import gethostname
 from subprocess import CalledProcessError, check_output, Popen, STDOUT
 import sys
 from time import sleep, time
+from traceback import format_exc
 
 if __name__ == '__main__' and __package__ is None:
     os.sys.path.append(dirname(dirname(abspath(__file__))))
@@ -66,6 +67,7 @@ RESPAWN_SIGNALS = ['SIGHUP', 'SIGINT', 'SIGQUIT', 'SIGILL', 'SIGTRAP',
 
 NO_CONFIG_SHUTDOWN_SEC = 3600
 """Shutdown if a config file is not found after this long"""
+
 
 class Daemon(object):
     """
@@ -355,6 +357,17 @@ class Daemon(object):
         queued = 0
         running = 0
         other = 0
+        try:
+            jobs = self.qstat.jobs
+        except Exception as err:
+            wstderr('-'*79 + '\n')
+            wstderr('qstat failed with following traceback:\n')
+            s = format_exc()
+            tb_txt = '\n'.join(['> %s' % _ for _ in s.strip().split('\n')])
+            wstderr(tb_txt + '\n')
+            wstderr('-'*79 + '\n')
+            return True
+
         for job in self.qstat.jobs:
             if (job['cluster'] != 'aci'
                     or job['queue'] != 'open'
@@ -658,11 +671,11 @@ class Daemon(object):
         while True:
             try:
                 if self.full:
-                    wstderr('Queue is full.')
+                    wstderr('Queue is full (or qstat failed).\n')
                 else:
                     self.do_some_work()
 
-                wstderr('going to sleep for %s seconds...\n' % self.sleep)
+                wstderr('Going to sleep for %s seconds...\n' % self.sleep)
                 sleep(self.sleep)
 
                 self.reconfigure()
