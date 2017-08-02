@@ -49,7 +49,7 @@ then
 	HNAME=$( tail -1 "$PIDFILE" 2>/dev/null )
 	if [ "$HNAME" == $( hostname ) ]
 	then
-		kill $PID
+		kill -9 $PID
 		if [ -n $( kill -0 $PID >/dev/null 2>&1 ) ]
 		then
 			rm -f "$PIDFILE"
@@ -97,14 +97,7 @@ printf "\n"
 if [ -n kill -0 "$INITIAL_PID" >/dev/null 2>&1 ]
 then
 	echo "FAILURE! openQ did not daemonize. Killing..."
-	kill "$INITIAL_PID"
-
-	sleep 2
-
-	if kill -0 "$INITIAL_PID" >/dev/null 2>&1
-	then
-		kill -9 "$INITIAL_PID"
-	fi
+	kill -9 "$INITIAL_PID"
 	exit 1
 fi
 

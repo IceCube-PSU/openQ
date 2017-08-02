@@ -61,6 +61,9 @@ SIGNAL_MAP = {
 """Mapping from signal numbers to their names"""
 
 RESPAWN_DELAY_SEC = 60
+RESPAWN_SIGNALS = ['SIGHUP', 'SIGINT', 'SIGQUIT', 'SIGILL', 'SIGTRAP',
+                   'SIGABRT', 'SIGTERM']
+
 NO_CONFIG_SHUTDOWN_SEC = 3600
 """Shutdown if a config file is not found after this long"""
 
@@ -337,7 +340,10 @@ class Daemon(object):
         signame = SIGNAL_MAP[signum]
         wstderr('Received signal %d (%s)\n' % (signum, signame))
         self.cleanup()
-        if signame in ['SIGTERM', 'SIGKILL']:
+        # `kill <pid>` sends SIGTERM (`kill -9` sends SIGKILL, but we can't
+        # catch this... and we want _some_ way to be able to kill without
+        # respawning, so `kill -9` is the way to do this, for now)
+        if signame in RESPAWN_SIGNALS:
             Popen(['nohup',
                    join(self.config_dir, 'deploy.sh'),
                    str(RESPAWN_DELAY_SEC)])
