@@ -8,6 +8,8 @@ down_count=0
 for u in $( grep "list = " ~jll1062/openQ/config.ini | sed -e 's/list = //' -e 's/,/\n/g' | sort | xargs )
 do
 	num_lines=$( cat ~/../${u}/.pid 2>/dev/null | wc -l 2>/dev/null )
+	pid=""
+	host=""
 	if [ -z "$num_lines" -o "$num_lines" != "2" ]
 	then
 		output=""
