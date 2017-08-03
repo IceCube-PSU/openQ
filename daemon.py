@@ -24,13 +24,12 @@ from socket import gethostname
 from subprocess import CalledProcessError, check_output, Popen, STDOUT
 import sys
 from time import sleep, time
-from traceback import format_exc
 
 if __name__ == '__main__' and __package__ is None:
     os.sys.path.append(dirname(dirname(abspath(__file__))))
 from openQ import DEFAULT_CONFIG # pylint: disable=wrong-import-position
 from openQ.qstat_base import QstatBase # pylint: disable=wrong-import-position
-from openQ.utils import (copy_contents, expand, get_gid, mkdir, # pylint: disable=wrong-import-position
+from openQ.utils import (copy_contents, expand, get_gid, log_exc, mkdir, # pylint: disable=wrong-import-position
                          remove_contents, rename_or_move, set_path_metadata,
                          wstderr, wstdout)
 
@@ -360,12 +359,7 @@ class Daemon(object):
         try:
             jobs = self.qstat.jobs
         except Exception as err:
-            wstderr('-'*79 + '\n')
-            wstderr('qstat failed with following traceback:\n')
-            s = format_exc()
-            tb_txt = '\n'.join(['> %s' % _ for _ in s.strip().split('\n')])
-            wstderr(tb_txt + '\n')
-            wstderr('-'*79 + '\n')
+            log_exc(pre='qstat failed with following traceback:')
             return True
 
         for job in self.qstat.jobs:

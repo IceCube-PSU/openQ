@@ -90,9 +90,9 @@ class QstatBase(object):
                 try:
                     self.group = getgrgid(self.gid).gr_name
                 except KeyError:
-                    #wstderr('WARNING: could not find GID %d; cannot set group'
-                    #        ' ownership on generated files and directories.\n'
-                    #        % self.gid)
+                    log_exc(pre=('Warning: could not find GID %d; cannot set'
+                                 ' group ownership on generated files and'
+                                 ' directories.\n' % self.gid))
                     self.gid = None
                     self.group = None
             elif isinstance(group, basestring):
@@ -100,9 +100,9 @@ class QstatBase(object):
                 try:
                     self.gid = getgrnam(self.group).gr_gid
                 except KeyError:
-                    #wstderr('WARNING: could not find group name %s; cannot set'
-                    #        ' group ownership on generated files and'
-                    #        ' directories.\n' % self.group)
+                    log_exc(pre=('Warning: could not find group name %s;'
+                                 ' cannot set group ownership on generated'
+                                 ' files and directories.\n' % self.group))
                     self.gid = None
                     self.group = None
             else:
@@ -282,7 +282,8 @@ class QstatBase(object):
                 with GzipFile(self.xml_fpath, mode='r') as fobj:
                     self._xml = fobj.read()
             except Exception:
-                pass
+                log_exc(pre=('Could not load XML from cache file "%s"'
+                             % self.xml_fpath))
             else:
                 self._xml_mtime = self.xml_file_mtime
                 return self._xml
@@ -320,7 +321,8 @@ class QstatBase(object):
             try:
                 self._jobs = pickle.load(open(self.jobs_fpath, 'rb'))
             except Exception:
-                pass
+                log_exc(pre=('Could not load `jobs` from cache file "%s"'
+                             % self.jobs_fpath))
             else:
                 self._jobs_mtime = self.jobs_file_mtime
                 return self._jobs
@@ -339,6 +341,7 @@ class QstatBase(object):
             try:
                 self._jobs = self.parse_xml(self.xml)
             except IOError:
+                log_exc(pre=('Parsing XML file "%s" failed' % self.xml_fpath))
                 # Invalidate the XML, since the parse failed
                 self._xml = None
                 if attempts >= MAX_ATTEMPTS:

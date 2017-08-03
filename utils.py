@@ -18,6 +18,7 @@ import re
 from shutil import copy2, copytree, move
 from sys import stderr, stdout
 from time import altzone, daylight, localtime, mktime, time, timezone, tzname
+from traceback import format_exc
 
 if __name__ == '__main__' and __package__ is None:
     os.sys.path.append(
@@ -27,11 +28,12 @@ if __name__ == '__main__' and __package__ is None:
 from openQ import GPU_GROUPS # pylint: disable=wrong-import-position
 
 
-__all__ = ['expand', 'set_path_metadata', 'wstdout', 'wstderr', 'UTCTimezone',
-           'TZ_UTC', 'LocalTimezone', 'TZ_LOCAL', 'timestamp',
-           'get_xml_subnode', 'get_xml_val', 'ddhhmmss_to_timedelta',
-           'to_bool', 'to_int', 'sec_since_epoch_to_datetime', 'to_bytes_size',
-           'GPUS_RE', 'QOS_RE', 'parse_pbs_command_file', 'gpu_access']
+__all__ = ['expand', 'set_path_metadata', 'wstdout', 'wstderr',
+           'log_exc', 'UTCTimezone', 'TZ_UTC', 'LocalTimezone', 'TZ_LOCAL',
+           'timestamp', 'get_xml_subnode', 'get_xml_val',
+           'ddhhmmss_to_timedelta', 'to_bool', 'to_int',
+           'sec_since_epoch_to_datetime', 'to_bytes_size', 'GPUS_RE', 'QOS_RE',
+           'parse_pbs_command_file', 'gpu_access']
 
 
 def expand(path):
@@ -225,6 +227,21 @@ def wstderr(msg):
     """Write `msg` to stderr & flush immediately"""
     stderr.write(msg)
     stderr.flush()
+
+
+def log_exc(pre=None, post=None):
+    """Log exception (and traceback)"""
+    wstderr('-'*79 + '\n')
+    s = format_exc()
+    lines = []
+    if pre is not None:
+        lines += pre
+    lines += ['> %s' % _ for _ in s.strip().split('\n')]
+    if post is not None:
+        lines += post
+    tb_txt = '\n'.join(lines)
+    wstderr(tb_txt + '\n')
+    wstderr('-'*79 + '\n')
 
 
 class UTCTimezone(tzinfo):

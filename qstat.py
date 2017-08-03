@@ -22,7 +22,7 @@ if __name__ == '__main__' and __package__ is None:
     os.sys.path.append(dirname(dirname(abspath(__file__))))
 from openQ import DEFAULT_CONFIG # pylint: disable=wrong-import-position
 from openQ.qstat_base import QstatBase # pylint: disable=wrong-import-position
-from openQ.utils import expand, wstdout # pylint: disable=wrong-import-position
+from openQ.utils import expand, log_exc, wstdout # pylint: disable=wrong-import-position
 
 
 __all__ = ['DEFAULT_STALE_SEC', 'SORT_COLS', 'Qstat', 'parse_args', 'main']
@@ -52,7 +52,8 @@ class Qstat(QstatBase):
             try:
                 self._jobs_df = pd.read_pickle(self.jobs_df_fpath)
             except Exception:
-                pass
+                log_exc(pre=('Loading jobs_df from cache file %s failed:'
+                             % self.jobs_df_fpath))
             else:
                 self._jobs_df_mtime = self.jobs_df_file_mtime
                 return self._jobs_df
@@ -307,8 +308,8 @@ def main(config, cache_dir=None, stale_sec=float('inf'), users=None,
         # Load the dataframe, if possible
         try:
             jobs_df = qstat.jobs_df
-        except ValueError as err:
-            #print err
+        except ValueError:
+            log_exc(pre='Getting jobs_df for user %s failed:' % user)
             continue
 
         # Attach username column to the dataframe
