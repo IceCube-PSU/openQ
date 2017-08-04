@@ -56,6 +56,11 @@ pyinstaller oqstat.spec \
     --noconfirm || exit 1
 echo "$DIST_DIR/oqstat/oqstat"
 
+#
+# "Install" tools (but _not_ daemon) in group dirs
+#
+
+# "Install" oqstat
 if "$DIST_DIR/oqstat/oqstat" >/dev/null 2>&1
 then
 	echo "Copying built files & libraries to directory \"$GROUP_BUILD_DIR/oqstat\""
@@ -68,5 +73,9 @@ then
 else
 	echo "Built oqstat didn't run successfully, not installing."
 fi
+
+# "Install" report_daemons.sh
+cp "$SRC_DIR/report_daemons.sh" "$GROUP_BIN_DIR"
+
 
 cd "$ORIG_DIR"

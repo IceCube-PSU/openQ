@@ -190,9 +190,9 @@ class Qstat(QstatBase):
 def parse_args(description=__doc__):
     """parse command-line args"""
     default_cache_dir = None
-    if isfile(DEFAULT_CONFIG):
+    if isfile(expand(DEFAULT_CONFIG)):
         config = ConfigParser()
-        config.read(DEFAULT_CONFIG)
+        config.read(expand(DEFAULT_CONFIG))
         try:
             default_cache_dir = config.get('Logging', 'qstat_cache_dir')
         except KeyError:

@@ -1,6 +1,6 @@
 #!/bin/bash
 #PBS -l nodes=1:ppn=1
-#PBS -l walltime=00:03:00
+#PBS -l walltime=00:30:00
 #PBS -l mem=4gb
 #PBS -j oe
 #PBS -o /dev/null
@@ -29,9 +29,9 @@ echo "Hello from hostname `hostname`" >> $OUTFILE
 
 echo "" >> $OUTFILE
 
-echo "cpuinfo" >> $OUTFILE
+echo "lscpu" >> $OUTFILE
 echo "-------" >> $OUTFILE
-cpuinfo >> $OUTFILE
+lscpu >> $OUTFILE
 
 echo "" >> $OUTFILE
 
