@@ -89,7 +89,7 @@ CLUSTER_QUEUE_LIMITS = {
         total_cpus=dict(soft=512, hard=1024),
         walltime=timedelta(hours=169),
         eligible_nodes=[
-            NODES['cl_standard']
+            NODES['cl_default']
         ],
         preemptible=False,
     ),
@@ -98,7 +98,7 @@ CLUSTER_QUEUE_LIMITS = {
         total_cpus=dict(soft=1024, hard=2048),
         walltime=timedelta(hours=96),
         eligible_nodes=[
-            NODES['cl_standard'],
+            NODES['cl_default'],
             NODES['cl_gpu'],
             NODES['cl_higpu'],
             NODES['cl_himem']

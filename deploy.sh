@@ -4,7 +4,7 @@
 # TODO: use --config option to daemon but without showing up on command line...?
 
 
-SRCDIR="$( readlink $( dirname $0 ) )"
+SRCDIR="$( readlink -f $( dirname $0 ) )"
 echo $SRCDIR
 SRC_CONFIG=$SRCDIR/config.ini
 SRC_DISTDIR=$SRCDIR/dist/daemon
@@ -74,8 +74,8 @@ fi
 export PATH=$DEST_DISTDIR:"$PATH"
 
 # Invoke the daemon
-$pname --logfile ~/daemon.deployed.log & # DEBUG
-#$pname &
+#$pname --logfile ~/daemon.deployed.log & # DEBUG
+$pname &
 # Get the initial PID (this should change when it daemonizes itself)
 INITIAL_PID=$!
 
