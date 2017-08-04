@@ -92,6 +92,7 @@ CLUSTER_QUEUE_LIMITS = {
             NODES['cl_default']
         ],
         preemptible=False,
+        time_to_queue=0.1,
     ),
     ('cyberlamp', 'open'): dict(
         jobs=dict(soft=512, hard=1024),
@@ -104,6 +105,7 @@ CLUSTER_QUEUE_LIMITS = {
             NODES['cl_himem']
         ],
         preemptible=True,
+        time_to_queue=0.1,
     ),
     ('cyberlamp', 'cl_gpu'): dict(
         jobs=dict(soft=200, hard=400),
@@ -113,6 +115,7 @@ CLUSTER_QUEUE_LIMITS = {
             NODES['cl_gpu']
         ],
         preemptible=False,
+        time_to_queue=0.1,
     ),
     ('cyberlamp', 'cl_higpu'): dict(
         jobs=dict(soft=200, hard=400),
@@ -122,6 +125,7 @@ CLUSTER_QUEUE_LIMITS = {
             NODES['cl_higpu']
         ],
         preemptible=False,
+        time_to_queue=0.1,
     ),
     ('cyberlamp', 'cl_himem'): dict(
         jobs=dict(soft=100, hard=200),
@@ -131,6 +135,7 @@ CLUSTER_QUEUE_LIMITS = {
             NODES['cl_himem']
         ],
         preemptible=True,
+        time_to_queue=0.1,
     ),
     ('cyberlamp', 'cl_phi'): dict(
         jobs=dict(soft=100, hard=200),
@@ -140,6 +145,7 @@ CLUSTER_QUEUE_LIMITS = {
             NODES['cl_phi']
         ],
         preemptible=True,
+        time_to_queue=0.1,
     ),
 
     #
@@ -157,6 +163,7 @@ CLUSTER_QUEUE_LIMITS = {
             NODES['aci_himem']
         ],
         preemptible=True,
+        time_to_queue=0.1,
     ),
     ('aci', 'dfc13_a_t_bc_default'): dict(
         jobs=dict(soft=180, hard=180*4),
@@ -166,6 +173,7 @@ CLUSTER_QUEUE_LIMITS = {
             NODES['aci_basic']
         ],
         preemptible=False,
+        time_to_queue=1.3,
     ),
     ('aci', 'dfc13_a_g_sc_default'): dict(
         jobs=dict(soft=20, hard=20*4),
@@ -176,5 +184,6 @@ CLUSTER_QUEUE_LIMITS = {
             NODES['aci_stmem1'],
         ],
         preemptible=False,
+        time_to_queue=1.3,
     ),
 }

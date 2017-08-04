@@ -25,11 +25,12 @@ from subprocess import CalledProcessError, check_output, Popen, STDOUT
 import sys
 from time import sleep, time
 
+# pylint: disable=wrong-import-position
 if __name__ == '__main__' and __package__ is None:
     os.sys.path.append(dirname(dirname(abspath(__file__))))
-from openQ import DEFAULT_CONFIG # pylint: disable=wrong-import-position
-from openQ.qstat_base import QstatBase # pylint: disable=wrong-import-position
-from openQ.utils import (copy_contents, expand, get_gid, log_exc, mkdir, # pylint: disable=wrong-import-position
+from openQ import CLUSTER_QUEUE_LIMITS, DEFAULT_CONFIG
+from openQ.qstat_base import QstatBase
+from openQ.utils import (copy_contents, expand, get_gid, log_exc, mkdir,
                          remove_contents, rename_or_move, set_path_metadata,
                          wstderr, wstdout)
 
@@ -358,11 +359,11 @@ class Daemon(object):
         other = 0
         try:
             jobs = self.qstat.jobs
-        except Exception as err:
+        except Exception:
             log_exc(pre='qstat failed with following traceback:')
             return True
 
-        for job in self.qstat.jobs:
+        for job in jobs:
             if (job['cluster'] != 'aci'
                     or job['queue'] != 'open'
                     or job['job_owner'] != self.myusername):
