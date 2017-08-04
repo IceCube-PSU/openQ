@@ -5,7 +5,7 @@
 
 
 SRCDIR="$( readlink -f $( dirname $0 ) )"
-echo $SRCDIR
+echo "Source directory: \"$SRCDIR\""
 SRC_CONFIG=$SRCDIR/config.ini
 SRC_DISTDIR=$SRCDIR/dist/daemon
 DEST_DISTDIR=~/.dist

@@ -28,7 +28,7 @@ from openQ.utils import expand, log_exc, wstdout # pylint: disable=wrong-import-
 __all__ = ['DEFAULT_STALE_SEC', 'SORT_COLS', 'Qstat', 'parse_args', 'main']
 
 
-DEFAULT_STALE_SEC = 120
+DEFAULT_STALE_SEC = 60
 SORT_COLS = ['cluster', 'queue', 'job_state', 'job_id']
 
 
