@@ -137,7 +137,7 @@ class QstatBase(object):
             )
 
         if self.cache_dir is not None and not isdir(self.cache_dir):
-            mkdir(self.cache_dir, perms=0o770, group=self.gid)
+            mkdir(self.cache_dir, perms=0o777, group=self.gid)
 
     def set_path_metadata(self, fpath, mtime=None):
         """Set group, appropriate permissions, and optionally mtime on a
@@ -215,13 +215,16 @@ class QstatBase(object):
     @property
     def jobs_is_stale(self):
         """bool : True if in-memory `jobs` is stale or missing"""
-        return self._jobs is None or time() - self.jobs_mtime >= self.stale_sec
+        return (self._jobs is None
+                or time() - self.jobs_mtime >= self.stale_sec
+                or self.jobs_mtime < self.xml_mtime)
 
     @property
     def jobs_df_is_stale(self):
         """bool : True if in-memory `jobs_df` is stale or missing"""
         return (self._jobs_df is None
-                or time() - self.jobs_df_mtime >= self.stale_sec)
+                or time() - self.jobs_df_mtime >= self.stale_sec
+                or self.jobs_df_mtime < self.jobs_mtime)
 
     @property
     def xml_file_is_stale(self):
@@ -237,6 +240,7 @@ class QstatBase(object):
             self.jobs_fpath is None
             or not isfile(self.jobs_fpath)
             or time() - self.jobs_file_mtime >= self.stale_sec
+            or self.jobs_file_mtime < self.xml_file_mtime
         )
         return self.xml_file_is_stale or jf_is_stale
 
@@ -247,6 +251,7 @@ class QstatBase(object):
             self.jobs_df_fpath is None
             or not isfile(self.jobs_df_fpath)
             or time() - self.jobs_df_file_mtime >= self.stale_sec
+            or self.jobs_df_file_mtime < self.jobs_file_mtime
         )
         return self.jobs_file_is_stale or jfdf_is_stale
 

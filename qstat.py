@@ -18,11 +18,12 @@ from os.path import isfile
 
 import pandas as pd
 
+# pylint: disable=wrong-import-position
 if __name__ == '__main__' and __package__ is None:
     os.sys.path.append(dirname(dirname(abspath(__file__))))
-from openQ import DEFAULT_CONFIG # pylint: disable=wrong-import-position
-from openQ.qstat_base import QstatBase # pylint: disable=wrong-import-position
-from openQ.utils import expand, log_exc, wstdout # pylint: disable=wrong-import-position
+from openQ import DEFAULT_CONFIG
+from openQ.qstat_base import QstatBase
+from openQ.utils import expand, log_exc, wstdout
 
 
 __all__ = ['DEFAULT_STALE_SEC', 'SORT_COLS', 'Qstat', 'parse_args', 'main']
@@ -48,7 +49,6 @@ class Qstat(QstatBase):
 
         # Load from disk-cache file
         if self.jobs_df_fpath is not None and not self.jobs_df_file_is_stale:
-            #print 'jobs_df from cache file'
             try:
                 self._jobs_df = pd.read_pickle(self.jobs_df_fpath)
             except Exception:
@@ -69,7 +69,7 @@ class Qstat(QstatBase):
             #print 'storing jobs_df to cache file at "%s"' % self.jobs_df_fpath
             self._jobs_df.to_pickle(self.jobs_df_fpath)
             self.set_path_metadata(self.jobs_df_fpath,
-                                   mtime=self.xml_file_mtime)
+                                   mtime=self.jobs_file_mtime)
 
         return self._jobs_df
 
